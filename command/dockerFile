@@ -1,0 +1,51 @@
+# bashのバイナリを作成
+FROM debian AS bash
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    wget \
+    libncurses5-dev \
+    libncursesw5-dev \
+    libreadline-dev \
+    libssl-dev \
+    bison \
+    flex \
+    gettext \
+    texinfo
+
+RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz
+RUN tar -xzf bash-5.2.tar.gz
+
+WORKDIR /bash-5.2
+
+RUN ./configure --without-bash-malloc --enable-static-link
+RUN make
+
+# binaryをコピーするために取得
+FROM busybox:1.35.0-uclibc AS bin
+
+
+# go製のコマンドを作成
+FROM golang:1.23.4 AS builder
+
+WORKDIR /cli
+
+COPY ./ /cli
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /cli/bin/help /cli/help/main.go
+
+
+# 実行ステージ: Distroless イメージに必要なバイナリをコピー
+FROM gcr.io/distroless/base:nonroot AS runner
+
+COPY --from=bash /bash-5.2/bash /bin/bash
+
+# 必要なコマンドをコピー
+COPY --from=bin /bin/ls /bin/ls
+COPY --from=bin /bin/cat /bin/cat
+COPY --from=bin /bin/clear /bin/clear
+
+COPY --from=builder /cli/bin/help /bin/help
+
+
+# エントリーポイントを設定
+ENTRYPOINT ["/bin/bash"]
