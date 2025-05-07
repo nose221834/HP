@@ -37,6 +37,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /cli/bin/help /cli/help/ma
 # 実行ステージ: Distroless イメージに必要なバイナリをコピー
 FROM gcr.io/distroless/base:nonroot AS runner
 
+# bashのバイナリをコピー
 COPY --from=bash /bash-5.2/bash /bin/bash
 
 # 必要なコマンドをコピー
@@ -44,8 +45,10 @@ COPY --from=bin /bin/ls /bin/ls
 COPY --from=bin /bin/cat /bin/cat
 COPY --from=bin /bin/clear /bin/clear
 
+# go製のコマンドをコピー
 COPY --from=builder /cli/bin/help /bin/help
 
+# bashの設定ファイルをコピー
 COPY ./.bashrc /home/nonroot/.bashrc
 
 
