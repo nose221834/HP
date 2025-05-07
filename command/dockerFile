@@ -46,6 +46,8 @@ COPY --from=bin /bin/clear /bin/clear
 
 COPY --from=builder /cli/bin/help /bin/help
 
+COPY ./.bashrc /home/nonroot/.bashrc
+
 
 # エントリーポイントを設定
 ENTRYPOINT ["/bin/bash"]
