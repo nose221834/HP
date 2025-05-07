@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y \
 
 # 独自ディレクトリに busybox 本体と必要なリンクを作成
 RUN mkdir /bb \
- && cp /bin/busybox /bb/ \
- && cd /bb \
- && ln -s busybox ls \
- && ln -s busybox cat \
- && ln -s busybox clear
+    && cp /bin/busybox /bb/ \
+    && cd /bb \
+    && ln -s busybox ls \
+    && ln -s busybox cat \
+    && ln -s busybox clear
 
 # Bash を静的リンクでビルド
 RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz \
@@ -36,6 +36,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 # 3) 最終イメージ：scratch
 FROM scratch AS runner
 
+# bashのバイナリを/binに配置
 COPY --from=base-builder /bash-5.2/bash /bin/bash
 
 # BusyBox バイナリとリンクのみを /bin に配置
@@ -43,14 +44,17 @@ COPY --from=base-builder /bb/ls       /bin/ls
 COPY --from=base-builder /bb/cat      /bin/cat
 COPY --from=base-builder /bb/clear    /bin/clear
 
-# Bash を静的ビルドしていればコピー（不要なら省略）
-# COPY --from=base-builder /path/to/static/bash /bin/bash
-
-# Go バイナリ
+# Goのバイナリを/binに配置
 COPY --from=go-builder /cli/bin/help /bin/help
+
+# groupとpasswdをコピー
+COPY ./etc /etc
+
+# 非rootユーザを作成
+USER nonroot
+WORKDIR /home/nonroot
 
 # (オプション) .bashrc など
 COPY ./.bashrc /home/nonroot/.bashrc
 
-# ENTRYPOINT は ash (BusyBox) か static bash
-ENTRYPOINT ["/bin/bash", "-i", "-l"]
+ENTRYPOINT ["/bin/bash"]
