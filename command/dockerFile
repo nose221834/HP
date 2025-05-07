@@ -1,56 +1,56 @@
-# bashのバイナリを作成
-FROM debian AS bash
+# 1) 共通ビルダー：BusyBox(static) を準備
+FROM debian AS base-builder
 
+# busybox-static をインストール
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    wget \
-    libncurses5-dev \
-    libncursesw5-dev \
-    libreadline-dev \
-    libssl-dev \
-    bison \
-    flex \
-    gettext \
-    texinfo
-
-RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz
-RUN tar -xzf bash-5.2.tar.gz
-
-WORKDIR /bash-5.2
-
-RUN ./configure --without-bash-malloc --enable-static-link
-RUN make
-
-# binaryをコピーするために取得
-FROM busybox:1.35.0-uclibc AS bin
+    build-essential wget \
+    libncurses5-dev libreadline-dev libssl-dev texinfo \
+    bison flex gettext busybox-static \
+    && rm -rf /var/lib/apt/lists/*
 
 
-# go製のコマンドを作成
-FROM golang:1.23.4 AS builder
+# 独自ディレクトリに busybox 本体と必要なリンクを作成
+RUN mkdir /bb \
+ && cp /bin/busybox /bb/ \
+ && cd /bb \
+ && ln -s busybox ls \
+ && ln -s busybox cat \
+ && ln -s busybox clear
 
+# Bash を静的リンクでビルド
+RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz \
+    && tar xzf bash-5.2.tar.gz \
+    && cd bash-5.2 \
+    && ./configure --without-bash-malloc --enable-static \
+            CFLAGS='-static' LDFLAGS='-static' \
+    && make \
+    && strip bash
+
+# 2) Go バイナリビルダー（もし不要なら省略可）
+FROM golang:1.23.4 AS go-builder
 WORKDIR /cli
+COPY ./help ./help
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -o /cli/bin/help ./help/main.go
 
-COPY ./ /cli
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /cli/bin/help /cli/help/main.go
+# 3) 最終イメージ：scratch
+FROM scratch AS runner
 
+COPY --from=base-builder /bash-5.2/bash /bin/bash
 
-# 実行ステージ: Distroless イメージに必要なバイナリをコピー
-FROM gcr.io/distroless/base:nonroot AS runner
+# BusyBox バイナリとリンクのみを /bin に配置
+COPY --from=base-builder /bb/ls       /bin/ls
+COPY --from=base-builder /bb/cat      /bin/cat
+COPY --from=base-builder /bb/clear    /bin/clear
 
-# bashのバイナリをコピー
-COPY --from=bash /bash-5.2/bash /bin/bash
+# Bash を静的ビルドしていればコピー（不要なら省略）
+# COPY --from=base-builder /path/to/static/bash /bin/bash
 
-# 必要なコマンドをコピー
-COPY --from=bin /bin/ls /bin/ls
-COPY --from=bin /bin/cat /bin/cat
-COPY --from=bin /bin/clear /bin/clear
+# Go バイナリ
+COPY --from=go-builder /cli/bin/help /bin/help
 
-# go製のコマンドをコピー
-COPY --from=builder /cli/bin/help /bin/help
-
-# bashの設定ファイルをコピー
+# (オプション) .bashrc など
 COPY ./.bashrc /home/nonroot/.bashrc
 
-
-# エントリーポイントを設定
-ENTRYPOINT ["/bin/bash"]
+# ENTRYPOINT は ash (BusyBox) か static bash
+ENTRYPOINT ["/bin/bash", "-i", "-l"]
