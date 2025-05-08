@@ -9,14 +9,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 
-# 独自ディレクトリに busybox 本体と必要なリンクを作成
-RUN mkdir /bb \
-    && cp /bin/busybox /bb/ \
-    && cd /bb \
-    && ln -s busybox ls \
-    && ln -s busybox cat \
-    && ln -s busybox clear
-
 # Bash を静的リンクでビルド
 RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz \
     && tar xzf bash-5.2.tar.gz \
@@ -25,6 +17,16 @@ RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz \
             CFLAGS='-static' LDFLAGS='-static' \
     && make \
     && strip bash
+
+# 独自ディレクトリに busybox 本体と必要なリンクを作成
+RUN mkdir /bb \
+    && cp /bin/busybox /bb/ \
+    && cd /bb \
+    && ln -s busybox ls \
+    && ln -s busybox cat \
+    && ln -s busybox clear \
+    && ln -s /bash-5.2/bash /bb/bash
+
 
 # 2) Go バイナリビルダー（もし不要なら省略可）
 FROM golang:1.23.4 AS go-builder
@@ -38,6 +40,9 @@ FROM scratch AS runner
 
 # bashのバイナリを/binに配置
 COPY --from=base-builder /bash-5.2/bash /bin/bash
+
+# RUNコマンドを実行するために、bashを/bin/shにリンク
+COPY --from=base-builder /bb/bash     /bin/sh
 
 # BusyBox バイナリとリンクのみを /bin に配置
 COPY --from=base-builder /bb/ls       /bin/ls
@@ -54,6 +59,6 @@ COPY ./etc /etc
 USER nonroot
 
 # (オプション) .bashrc など
-COPY ./.bashrc /home/nonroot/.bashrc
+COPY ./config/.bashrc /home/nonroot/.bashrc
 
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/bin/bash","-l"]
