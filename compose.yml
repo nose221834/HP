@@ -4,9 +4,12 @@ services:
       context: ./api
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8000:3000"
     volumes:
       - ./api:/rails
+    environment:
+      RAILS_ENV: development
+      DATABASE_URL: postgres://user:password@db:5432/mydb
     depends_on:
       - db
 
