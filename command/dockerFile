@@ -52,7 +52,6 @@ COPY ./etc /etc
 
 # 非rootユーザを作成
 USER nonroot
-WORKDIR /home/nonroot
 
 # (オプション) .bashrc など
 COPY ./.bashrc /home/nonroot/.bashrc
