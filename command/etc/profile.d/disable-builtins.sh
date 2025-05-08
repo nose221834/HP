@@ -7,7 +7,7 @@ enable -n bind
 enable -n break
 enable -n builtin
 enable -n caller
-enable -n cd
+# enable -n cd
 enable -n command
 enable -n compgen
 enable -n complete
@@ -61,4 +61,4 @@ enable -n wait
 # 必ず最後に実行する
 enable -n enable
 
-# 許可してあるコマンド：exit,times,pwd,exoprt,alias
+# 許可してあるコマンド：exit,times,pwd,exoprt,alias,cd

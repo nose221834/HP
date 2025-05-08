@@ -57,6 +57,6 @@ COPY ./etc /etc
 USER nonroot
 
 # (オプション) .bashrc など
-COPY ./config/.bashrc /home/nonroot/.bashrc
+COPY ./config/ /home/nonroot/
 
 ENTRYPOINT ["/bin/bash","-l"]
