@@ -59,6 +59,6 @@ enable -n unalias
 enable -n wait
 
 # 必ず最後に実行する
-# enable -n enable
+enable -n enable
 
 # 許可してあるコマンド：exit,times,pwd,exoprt,alias
