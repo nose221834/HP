@@ -25,24 +25,11 @@ ENV RAILS_ENV="development" \
     BUNDLE_PATH="/usr/local/bundle" \
     BUNDLE_JOBS="4"
 
-# RUN bundle install --path "$BUNDLE_PATH"
+COPY ./ /rails
+
+RUN bundle install
 
 # TODO: あとでつくる
-# ENTRYPOINT ["./docker/entrypoint.sh"]
+ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 
-# CMD ["bin/rails", "server", "-b", "0.0.0.0", "-p", "3000"]
-
-# いか、エントリーポイントの例
-# #!/bin/bash
-# set -e
-
-# # PostgreSQL 起動待ち
-# until pg_isready -h "$DB_HOST" -p "${DB_PORT:-5432}"; do
-#   echo "Waiting for database..."
-#   sleep 1
-# done
-
-# # DB 作成／マイグレーション
-# bundle exec rails db:create db:migrate 2>/dev/null || true
-
-# exec "$@"
+CMD ["bin/rails", "server", "-b", "0.0.0.0", "-p", "3000"]
