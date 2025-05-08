@@ -10,8 +10,21 @@ services:
     environment:
       RAILS_ENV: development
       DATABASE_URL: postgres://user:password@db:5432/mydb
+      REDIS_URL: "redis://:password@redis:6379/0"
     depends_on:
       - db
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PASSWORD: password
+    volumes:
+      - redis_data:/data
+
 
   db:
     image: postgres:latest
@@ -34,4 +47,6 @@ services:
 
 volumes:
   db_data:
+    driver: local
+  redis_data:
     driver: local
