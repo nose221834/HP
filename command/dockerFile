@@ -24,9 +24,7 @@ RUN mkdir /bb \
     && cd /bb \
     && ln -s busybox ls \
     && ln -s busybox cat \
-    && ln -s busybox clear \
-    && ln -s /bash-5.2/bash /bb/bash
-
+    && ln -s busybox clear
 
 # 2) Go バイナリビルダー（もし不要なら省略可）
 FROM golang:1.23.4 AS go-builder
@@ -42,7 +40,7 @@ FROM scratch AS runner
 COPY --from=base-builder /bash-5.2/bash /bin/bash
 
 # RUNコマンドを実行するために、bashを/bin/shにリンク
-COPY --from=base-builder /bb/bash     /bin/sh
+COPY --from=base-builder /bash-5.2/bash   /bin/sh
 
 # BusyBox バイナリとリンクのみを /bin に配置
 COPY --from=base-builder /bb/ls       /bin/ls
