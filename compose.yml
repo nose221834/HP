@@ -1,5 +1,6 @@
 services:
   api:
+    container_name: api
     build:
       context: ./api
       dockerfile: Dockerfile
@@ -15,6 +16,7 @@ services:
       - db
 
   redis:
+    container_name: redis
     image: redis:latest
     ports:
       - "6379:6379"
@@ -27,6 +29,7 @@ services:
 
 
   db:
+    container_name: db
     image: postgres:latest
     environment:
       POSTGRES_USER: user
