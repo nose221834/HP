@@ -12,5 +12,6 @@ Rails.application.routes.draw do
     namespace 'v1' do
       # websocketを使用するためのルーティング
       mount ActionCable.server => '/cable'
-
+    end
+  end
 end
