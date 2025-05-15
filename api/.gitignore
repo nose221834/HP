@@ -30,3 +30,7 @@
 
 # Ignore master key for decrypting credentials and more.
 /config/master.key
+
+# vender directory for gems
+vendor/bundle
+vendor/cache
