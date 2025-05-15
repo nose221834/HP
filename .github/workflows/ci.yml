@@ -29,6 +29,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -49,6 +52,7 @@ jobs:
           author_email: action@github.com
           message: "chore: auto format code"
           push: true
+
 
 
   test:
