@@ -6,9 +6,22 @@ on:
     branches: [main]
 
 jobs:
+  get-app-token:
+    runs-on: ubuntu-latest
+    outputs:
+      token: ${{ steps.create.outputs.token }}
+    steps:
+      # github appトークンを作成する
+      - name: Create github app token
+        id: create
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_KEY }}
+
   scan_ruby:
     runs-on: ubuntu-latest
-
+    needs: get-app-token
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,12 +39,15 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    needs: get-app-token
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
+          token: ${{ needs.get-app-token.outputs.token }}
+          persist-credentials: true
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -55,6 +71,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    needs: get-app-token
     services:
       postgres:
         image: postgres

@@ -1,5 +1,5 @@
 # Actionの名前
-name: User Code Quality
+name: CI-view
 
 permissions:
   contents: write
