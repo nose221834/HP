@@ -12,12 +12,20 @@ export default tseslint.config(
     extends: [
       js.configs.recommended,
       ...tseslint.configs.recommended,
+      // 型チェック用の設定を追加
+      ...tseslint.configs.recommendedTypeChecked,
       eslintConfigPrettier,
     ],
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+      parserOptions: {
+        // tsconfig.app.jsonを指定
+        // tsconfig.jsonを指定すると、tsconfig.app.jsonの設定が無視される
+        project: './tsconfig.app.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     plugins: {
       'react-hooks': reactHooks,
