@@ -48,6 +48,12 @@ services:
     depends_on:
       - db
 
+  terminal:
+    container_name: terminal
+    build:
+      context: ./terminal
+      dockerfile: Dockerfile
+
 volumes:
   db_data:
     driver: local
