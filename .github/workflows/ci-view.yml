@@ -9,6 +9,12 @@ on:
   pull_request:
     # 対象のブランチを指定
     branches: ['main']
+    # 対象のパスを指定
+    paths:
+      # view以下のファイルが変更された場合にのみ実行
+      - 'view/**'
+      # .github/workflows/ci-view.ymlが変更された場合にのみ実行
+      - '.github/workflows/ci-view.yml'
 
 jobs:
   Code-Check:
