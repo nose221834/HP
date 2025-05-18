@@ -6,14 +6,46 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+// Prettierの設定を別変数として抽出して可読性を向上
+const prettierConfig = {
+  singleQuote: true,
+  semi: true,
+  tabWidth: 2,
+  trailingComma: 'es5',
+  bracketSpacing: true,
+  // 注意: importOrderを使用するには@ianvs/prettier-plugin-sort-importsなどの
+  // プラグインが必要です。インストールされていない場合は削除してください。
+  importOrder: [
+    '^(react/(.*)$)|^(react$)',
+    '<THIRD_PARTY_MODULES>',
+    '',
+    '^types$',
+    '^@local/(.*)$',
+    '^@/config/(.*)$',
+    '^@/lib/(.*)$',
+    '^@/components/(.*)$',
+    '^@/styles/(.*)$',
+    '^[./]',
+  ],
+  importOrderSeparation: false,
+  importOrderSortSpecifiers: true,
+  importOrderBuiltinModulesToTop: true,
+  importOrderParserPlugins: ['typescript', 'jsx', 'decorators-legacy'],
+  importOrderMergeDuplicateImports: true,
+  importOrderCombineTypeAndValueImports: true,
+  plugins: ['@trivago/prettier-plugin-sort-imports'],
+};
+
 export default tseslint.config(
-  { ignores: ['dist'] },
+  // 無視するディレクトリ
+  { ignores: ['dist', 'node_modules', '.vite', '.pnpm-store'] },
   {
     extends: [
       js.configs.recommended,
       ...tseslint.configs.recommended,
-      // 型チェック用の設定を追加
+      // 型チェック用の設定
       ...tseslint.configs.recommendedTypeChecked,
+      // Prettierと競合するルールを無効化（必ず最後に配置）
       eslintConfigPrettier,
     ],
     files: ['**/*.{ts,tsx}'],
@@ -21,8 +53,7 @@ export default tseslint.config(
       ecmaVersion: 2020,
       globals: globals.browser,
       parserOptions: {
-        // tsconfig.app.jsonを指定
-        // tsconfig.jsonを指定すると、tsconfig.app.jsonの設定が無視される
+        // ソースファイルを直接含むtsconfig.app.jsonを指定
         project: './tsconfig.app.json',
         tsconfigRootDir: import.meta.dirname,
       },
@@ -33,36 +64,17 @@ export default tseslint.config(
       prettier: prettier,
     },
     rules: {
+      // React Hooksのルール
       ...reactHooks.configs.recommended.rules,
+
+      // React Refreshのルール
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
       ],
-      'prettier/prettier': [
-        'error',
-        {
-          // Prettierの設定をここに追加
-          singleQuote: true,
-          semi: true,
-          tabWidth: 2,
-          trailingComma: 'es5',
-          bracketSpacing: true,
-          importOrder: [
-            '^(react/(.*)$)|^(react$)',
-            '^(next/(.*)$)|^(next$)',
-            '<THIRD_PARTY_MODULES>',
-            '^types$',
-            '^@/config/(.*)$',
-            '^@/lib/(.*)$',
-            '^@/components/(.*)$',
-            '^@/hooks/(.*)$',
-            '^@/styles/(.*)$',
-            '^[./]',
-          ],
-          importOrderSeparation: false,
-          importOrderSortSpecifiers: true,
-        },
-      ],
+
+      // Prettierのルール - コードスタイルの自動整形
+      'prettier/prettier': ['error', prettierConfig],
     },
   }
 );
