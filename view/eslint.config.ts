@@ -32,7 +32,7 @@ const prettierConfig = {
 };
 
 export default {
-  ignorePatterns: ['node_modules', '.vite', '.pnpm-store'],
+  ignores: ['node_modules', '.vite', '.pnpm-store'],
   parser: tsParser,
   parserOptions: {
     ecmaVersion: 'latest',
