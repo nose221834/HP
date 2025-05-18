@@ -1,72 +1,103 @@
-import { useEffect, useRef } from 'react';
-import { Terminal } from '@xterm/xterm';
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+} from 'react';
+import { useXterm } from '../hooks/useXterm';
+import type { ITerminalOptions } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
-function Term() {
-  const terminalRef = useRef<HTMLDivElement>(null);
-  const terminalInstance = useRef<Terminal | null>(null);
-
-  useEffect(() => {
-    // コンポーネントがマウントされた後にターミナルを初期化
-    if (terminalRef.current) {
-      // 既存のインスタンスがあれば破棄
-      if (terminalInstance.current) {
-        terminalInstance.current.dispose();
-      }
-
-      // 新しいターミナルインスタンスを作成
-      const term = new Terminal({
-        cursorBlink: true,
-        fontSize: 14,
-        fontFamily: 'monospace',
-        theme: {
-          background: '#1e1e1e',
-          foreground: '#f8f8f8',
-        },
-      });
-
-      term.open(terminalRef.current);
-      term.write('Welcome to xterm.js!\r\n$ ');
-
-      // ユーザー入力の基本的な処理
-      term.onKey(({ key, domEvent }) => {
-        const printable =
-          !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey;
-
-        if (domEvent.keyCode === 13) {
-          // Enter キー
-          term.write('\r\n$ ');
-        } else if (domEvent.keyCode === 8) {
-          // Backspace キー
-          // カーソルが行の先頭（プロンプトの後）より右にある場合のみ削除
-          if (term.buffer.active.cursorX > 2) {
-            term.write('\b \b');
-          }
-        } else if (printable) {
-          term.write(key);
-        }
-      });
-
-      terminalInstance.current = term;
-    }
-
-    // クリーンアップ関数
-    return () => {
-      if (terminalInstance.current) {
-        terminalInstance.current.dispose();
-        terminalInstance.current = null;
-      }
-    };
-  }, []);
-
-  return (
-    <div className="w-full h-screen flex flex-col bg-gray-900 p-2.5">
-      <div
-        ref={terminalRef}
-        className="flex-1 overflow-hidden rounded-md p-1 shadow-lg"
-      />
-    </div>
-  );
+// ターミナルの公開メソッドを定義するインターフェース
+export interface TerminalRef {
+  focus: () => void;
+  write: (data: string) => void;
+  clear: () => void;
+  reset: () => void;
+  // 必要に応じて他のメソッドも追加可能
 }
 
-export default Term;
+export interface XtermTerminalProps extends ITerminalOptions {
+  className?: string;
+  // ReactNodeを削除し、ターミナルに書き込める型のみ許可
+  initialContent?: string | number | boolean;
+  onData?: (data: string) => void;
+  onTitleChange?: (title: string) => void;
+}
+
+/**
+ * XtermTerminal
+ *
+ * - ref 経由で focus() や write() を呼べるようにする
+ * - initialContent は一度だけ書き込む
+ * - useXterm 内のプロンプトはそのまま利用
+ */
+export const XtermTerminal = forwardRef<TerminalRef, XtermTerminalProps>(
+  ({ className = '', initialContent, onData, onTitleChange, ...opts }, ref) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const { terminal } = useXterm(containerRef, opts);
+
+    // ref 経由で端末操作を公開（必要なメソッドのみ公開）
+    useImperativeHandle(
+      ref,
+      () => ({
+        focus: () => terminal?.focus(),
+        write: (data: string) => terminal?.write(data),
+        clear: () => terminal?.clear(),
+        reset: () => terminal?.reset(),
+      }),
+      [terminal]
+    );
+
+    // イベントハンドラ登録
+    useEffect(() => {
+      if (!terminal) return;
+      const disposables: { dispose: () => void }[] = [];
+
+      // simpleShell の onData に加え、外部 onData も呼びたい場合
+      if (onData) {
+        disposables.push(
+          terminal.onData((data) => {
+            onData(data);
+          })
+        );
+      }
+
+      if (onTitleChange) {
+        disposables.push(
+          terminal.onTitleChange((title) => {
+            onTitleChange(title);
+          })
+        );
+      }
+
+      // 初回マウント時のみ initialContent を書き込む
+      if (initialContent !== undefined) {
+        // 安全に文字列変換
+        terminal.write(String(initialContent));
+      }
+
+      return () => {
+        // 全ハンドラを破棄
+        disposables.forEach((d) => d.dispose());
+      };
+    }, [terminal, onData, onTitleChange, initialContent]);
+
+    return (
+      <div
+        ref={containerRef}
+        className={`
+      xterm-container
+      ${className}
+      w-full
+      h-full
+      min-h-[200px]
+      overflow-hidden
+    `}
+      />
+    );
+  }
+);
+
+XtermTerminal.displayName = 'XtermTerminal';
+export default React.memo(XtermTerminal);
