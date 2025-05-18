@@ -1,9 +1,9 @@
-name: CI
+name: CI-api
 
 on:
   pull_request:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   scan_ruby:
@@ -50,10 +50,8 @@ jobs:
         with:
           author_name: GitHub Action
           author_email: action@github.com
-          message: "chore: auto format code"
+          message: 'chore: auto format code'
           push: true
-
-
 
   test:
     runs-on: ubuntu-latest
