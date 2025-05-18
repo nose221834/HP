@@ -6,10 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  get-app-token:
+  lint:
     runs-on: ubuntu-latest
-    outputs:
-      token: ${{ steps.create.outputs.token }}
     steps:
       # github appトークンを作成する
       - name: Create github app token
@@ -19,34 +17,12 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_KEY }}
 
-  scan_ruby:
-    runs-on: ubuntu-latest
-    needs: get-app-token
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: .ruby-version
-          bundler-cache: true
-          working-directory: ./api
-
-      - name: Scan for common Rails security vulnerabilities using static analysis
-        run: bin/brakeman --no-pager
-        working-directory: ./api
-
-  lint:
-    runs-on: ubuntu-latest
-    needs: get-app-token
-    steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
-          token: ${{ needs.get-app-token.outputs.token }}
+          token: ${{ steps.create.outputs.token }}
           persist-credentials: true
 
       - name: Set up Ruby
@@ -69,9 +45,24 @@ jobs:
           message: 'chore: auto format code'
           push: true
 
+      # breakmanでコードの自動修正を実行
+
+      - name: Scan for common Rails security vulnerabilities using static analysis
+        run: bin/brakeman --no-pager -a
+        working-directory: ./api
+
+      # 変更があれば、コミット＆プッシュする
+      - name: Commit lint fixed files
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: GitHub Action
+          author_email: action@github.com
+          message: 'chore: auto format code'
+          push: true
+
   test:
     runs-on: ubuntu-latest
-    needs: get-app-token
+    needs: lint
     services:
       postgres:
         image: postgres
