@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "fmt": "prettier --write **/*.{js,jsx,ts,tsx,css,scss}",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint-fix": "eslint src --ext js,jsx,ts,tsx,html --report-unused-disable-directives --max-warnings 0 --fix"
   },
   "dependencies": {
     "solid-js": "^1.9.5"
