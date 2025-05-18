@@ -5,7 +5,8 @@ development:
   channel_prefix: api_development
 
 test:
-  adapter: test
+  url: <%= ENV.fetch("REDIS_URL") { "redis://localhost:6379/0" } %>
+  channel_prefix: api_test
 
 production:
   adapter: redis
