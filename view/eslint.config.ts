@@ -31,74 +31,94 @@ const prettierConfig = {
   plugins: ['@trivago/prettier-plugin-sort-imports'],
 };
 
-export default {
-  ignores: ['node_modules', '.vite', '.pnpm-store'],
-  parser: tsParser,
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    ecmaFeatures: { jsx: true },
-    project: './tsconfig.app.json',
+// ESLint 9.x フラット設定形式
+export default [
+  // グローバル設定（無視するファイル）
+  {
+    ignores: ['node_modules', '.vite', '.pnpm-store'],
   },
-  plugins: {
-    solid: solidPlugin,
-    '@typescript-eslint': tsPlugin,
-    import: importPlugin,
-    prettier: prettierPlugin,
-  },
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended',
-    'plugin:@typescript-eslint/recommended-requiring-type-checking',
-    'plugin:solid/typescript',
-    'plugin:solid/jsx-a11y',
-    'plugin:import/errors',
-    'plugin:import/warnings',
-    'plugin:import/typescript',
-    'plugin:prettier/recommended',
-    'prettier',
-  ],
-  settings: {
-    'import/resolver': {
-      typescript: {
+
+  // メインの設定
+  {
+    // 言語オプション（パーサーとパーサーオプションを含む）
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+        ecmaFeatures: { jsx: true },
         project: './tsconfig.app.json',
       },
     },
-  },
-  rules: {
-    'solid/jsx-no-construct': 'error',
-    'solid/jsx-no-script-url': 'error',
-    'solid/jsx-no-undef': 'error',
-    'solid/jsx-uses-solid': 'error',
-    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-    '@typescript-eslint/explicit-function-return-type': [
-      'error',
-      { allowExpressions: true },
-    ],
-    'import/order': [
-      'error',
-      {
-        groups: [
-          'builtin',
-          'external',
-          'internal',
-          ['parent', 'sibling', 'index'],
-        ],
-        pathGroups: [
-          { pattern: 'solid-js/**', group: 'external', position: 'before' },
-        ],
-        'newlines-between': 'always',
-        alphabetize: { order: 'asc', caseInsensitive: true },
-      },
-    ],
-    'prettier/prettier': ['error', prettierConfig],
-  },
-  overrides: [
-    {
-      files: ['*.tsx'],
-      rules: {
-        'solid/jsx-quotes': ['error', 'prefer-double'],
+
+    // プラグインの定義
+    plugins: {
+      solid: solidPlugin,
+      '@typescript-eslint': tsPlugin,
+      import: importPlugin,
+      prettier: prettierPlugin,
+    },
+
+    // ルールセットを継承（フラット設定では扱いが異なる）
+    rules: {
+      // eslint:recommended のルール
+      'no-console': 'warn',
+      'no-unused-vars': 'off', // @typescript-eslint で代替
+      'no-undef': 'error',
+
+      // @typescript-eslint のルール
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_' },
+      ],
+      '@typescript-eslint/explicit-function-return-type': [
+        'error',
+        { allowExpressions: true },
+      ],
+
+      // solid のルール
+      'solid/jsx-no-construct': 'error',
+      'solid/jsx-no-script-url': 'error',
+      'solid/jsx-no-undef': 'error',
+      'solid/jsx-uses-solid': 'error',
+
+      // import のルール
+      'import/order': [
+        'error',
+        {
+          groups: [
+            'builtin',
+            'external',
+            'internal',
+            ['parent', 'sibling', 'index'],
+          ],
+          pathGroups: [
+            { pattern: 'solid-js/**', group: 'external', position: 'before' },
+          ],
+          'newlines-between': 'always',
+          alphabetize: { order: 'asc', caseInsensitive: true },
+        },
+      ],
+
+      // prettier のルール
+      'prettier/prettier': ['error', prettierConfig],
+    },
+
+    // 設定（フラット設定形式では settings が外側に)
+    settings: {
+      'import/resolver': {
+        typescript: {
+          project: './tsconfig.app.json',
+        },
       },
     },
-  ],
-};
+  },
+
+  // TSX ファイル向けの特殊ルール（overrides の代わりに別オブジェクトで指定）
+  {
+    files: ['**/*.tsx'],
+    rules: {
+      'solid/jsx-quotes': ['error', 'prefer-double'],
+    },
+  },
+];
