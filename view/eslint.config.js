@@ -6,15 +6,13 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-// Prettierの設定を別変数として抽出して可読性を向上
 const prettierConfig = {
   singleQuote: true,
   semi: true,
   tabWidth: 2,
   trailingComma: 'es5',
   bracketSpacing: true,
-  // 注意: importOrderを使用するには@ianvs/prettier-plugin-sort-importsなどの
-  // プラグインが必要です。インストールされていない場合は削除してください。
+  // 注意: importOrderを使用するには@ianvs/prettier-plugin-sort-importsが必要
   importOrder: [
     '^(react/(.*)$)|^(react$)',
     '<THIRD_PARTY_MODULES>',
@@ -38,7 +36,7 @@ const prettierConfig = {
 
 export default tseslint.config(
   // 無視するディレクトリ
-  { ignores: ['dist', 'node_modules', '.vite', '.pnpm-store'] },
+  { ignores: ['node_modules', '.vite', '.pnpm-store'] },
   {
     extends: [
       js.configs.recommended,
