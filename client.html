@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>WebSocket Test</title>
+</head>
+<body>
+  <h1>WebSocket Test</h1>
+  <input type="text" id="messageInput" placeholder="コマンドを入力 (例: ls, pwd)" />
+  <button onclick="sendMessage()">実行</button>
+  <pre id="log"></pre>
+
+  <script>
+    const log = document.getElementById('log');
+    // Docker環境でのWebSocket接続URL
+    // ブラウザからアクセスする場合は、ホストマシンのIPアドレスを使用
+    const wsHost = window.location.hostname === 'localhost' ? 'localhost' : '192.168.97.1';
+    const ws = new WebSocket(`ws://${wsHost}:8000/api/v1/cable`);
+    
+    // セッションIDを生成（ページ読み込み時に一度だけ）
+    const sessionId = crypto.randomUUID();
+    log.textContent += `🔌 接続先: ws://${wsHost}:8000/api/v1/cable\n`;
+    log.textContent += `🔑 セッションID: ${sessionId}\n`;
+
+    ws.onopen = () => {
+      log.textContent += '✅ 接続しました\n';
+      // ActionCableの接続確立メッセージを送信
+      ws.send(JSON.stringify({
+        command: 'subscribe',
+        identifier: JSON.stringify({
+          channel: 'CommandChannel'
+        })
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'welcome') {
+          log.textContent += '✅ ActionCable接続が確立されました\n';
+        } else if (data.type === 'confirm_subscription') {
+          log.textContent += '✅ チャンネルにサブスクライブしました\n';
+        } else if (data.message) {
+          if (data.message.result) {
+            log.textContent += `📨 実行結果:\n${data.message.result}\n`;
+          } else if (data.message.error) {
+            log.textContent += `❌ エラー: ${data.message.error}\n`;
+            if (data.message.result) {
+              log.textContent += `📨 実行結果(エラー時):\n${data.message.result}\n`;
+            }
+          }
+          // 現在のディレクトリを表示
+          if (data.message.pwd) {
+            log.textContent += `📂 現在のディレクトリ: ${data.message.pwd}\n`;
+          }
+        } else {
+          // log.textContent += `📨 受信: ${event.data}\n`;
+        }
+      } catch (e) {
+        // log.textContent += `📨 受信: ${event.data}\n`;
+      }
+    };
+
+    ws.onclose = () => {
+      log.textContent += '🔌 接続が閉じられました\n';
+    };
+
+    ws.onerror = (error) => {
+      log.textContent += `⚠️ エラー: ${error}\n`;
+    };
+
+    function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const command = input.value.trim();
+      
+      if (!command) return;
+
+      // コマンドとセッションIDを含むメッセージを作成
+      const message = {
+        command: command,
+        session_id: sessionId
+      };
+
+      // ActionCableのメッセージフォーマットに従って送信
+      ws.send(JSON.stringify({
+        command: 'message',
+        identifier: JSON.stringify({
+          channel: 'CommandChannel'
+        }),
+        data: JSON.stringify({
+          action: 'execute_command',
+          command: JSON.stringify(message) // コマンドとセッションIDを含むJSONを文字列化
+        })
+      }));
+
+      log.textContent += `📤 コマンド実行: ${command}\n`;
+      input.value = '';
+    }
+  </script>
+</body>
+</html>

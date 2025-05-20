@@ -8,13 +8,12 @@ RUN apt-get update && apt-get install -y \
     bison flex gettext busybox-static \
     && rm -rf /var/lib/apt/lists/*
 
-
 # Bash を静的リンクでビルド
 RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz \
     && tar xzf bash-5.2.tar.gz \
     && cd bash-5.2 \
     && ./configure --without-bash-malloc --enable-static \
-            CFLAGS='-static' LDFLAGS='-static' \
+    CFLAGS='-static' LDFLAGS='-static' \
     && make \
     && strip bash
 
@@ -26,15 +25,22 @@ RUN mkdir /bb \
     && ln -s busybox cat \
     && ln -s busybox clear
 
-# 2) Go バイナリビルダー（もし不要なら省略可）
-FROM golang:1.23.4 AS go-builder
-WORKDIR /cli
-COPY ./help ./help
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -o /cli/bin/help ./help/main.go
+# 2) Go バイナリビルダー
+FROM golang:1.21 AS go-builder
+WORKDIR /app
 
-# 3) 最終イメージ：scratch
-FROM scratch AS runner
+# Goモジュールの初期化と依存関係のインストール
+COPY go.mod go.sum ./
+RUN go mod download
+
+# ソースコードのコピーとビルド
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/terminal
+
+RUN go build -o /cli/bin/help ./help/main.go
+
+# 3) 最終イメージ
+FROM gcr.io/distroless/static-debian11:nonroot
 
 # bashのバイナリを/binに配置
 COPY --from=base-builder /bash-5.2/bash /bin/bash
@@ -49,14 +55,12 @@ COPY --from=base-builder /bb/clear    /bin/clear
 
 # Goのバイナリを/binに配置
 COPY --from=go-builder /cli/bin/help /bin/help
+COPY --from=go-builder /app/terminal /usr/local/bin/terminal
 
 # groupとpasswdをコピー
 COPY ./etc /etc
-
-# 非rootユーザを作成
-USER nonroot
-
-# (オプション) .bashrc など
 COPY ./config/ /home/nonroot/
 
-ENTRYPOINT ["/bin/bash","-l"]
+
+# アプリケーションの起動
+CMD ["terminal"]
