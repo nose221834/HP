@@ -60,12 +60,30 @@ export function createTerm(container: HTMLDivElement): {
   let isProcessingCommand = false;
   let isInitialConnection = true;
 
+  // コマンド履歴の管理
+  const commandHistory: string[] = [];
+  let historyIndex = -1; // 現在の履歴位置（-1は現在のコマンド入力中）
+
   // プロンプトを表示する関数
   const writePrompt = () => {
     term.write('\r\n');
     term.write(`\x1b[32m${currentDir}\x1b[0m $ `);
     cursorPosition = 0;
     commandBuffer = '';
+    historyIndex = -1; // プロンプト表示時に履歴位置をリセット
+  };
+
+  // 現在の行をクリアして新しいコマンドを表示する関数
+  const clearAndWriteCommand = (command: string) => {
+    // 現在の行をクリア
+    term.write('\r');
+    term.write(`\x1b[32m${currentDir}\x1b[0m $ `);
+    term.write('\x1b[K'); // カーソル位置から行末までクリア
+
+    // 新しいコマンドを表示
+    commandBuffer = command;
+    cursorPosition = command.length;
+    term.write(command);
   };
 
   // 初期メッセージの表示
@@ -79,34 +97,59 @@ export function createTerm(container: HTMLDivElement): {
     const printable =
       !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey;
 
-    if (domEvent.keyCode === 13) {
+    if (domEvent.code === 'Enter') {
       // Enter
       if (commandBuffer.trim()) {
         term.write('\r\n');
+        commandHistory.push(commandBuffer);
+        if (commandHistory.length > 100) {
+          commandHistory.shift();
+        }
         executeCommand(commandBuffer);
       } else {
         writePrompt();
       }
-    } else if (domEvent.keyCode === 8) {
+    } else if (domEvent.code === 'Backspace') {
       // Backspace
       if (cursorPosition > 0) {
         commandBuffer = commandBuffer.slice(0, -1);
         cursorPosition--;
         term.write('\b \b');
       }
-    } else if (domEvent.keyCode === 37) {
+    } else if (domEvent.code === 'ArrowLeft') {
       // Left arrow
       if (cursorPosition > 0) {
         cursorPosition--;
         term.write('\x1b[D');
       }
-    } else if (domEvent.keyCode === 39) {
+    } else if (domEvent.code === 'ArrowRight') {
       // Right arrow
       if (cursorPosition < commandBuffer.length) {
         cursorPosition++;
         term.write('\x1b[C');
       }
+    } else if (domEvent.code === 'ArrowUp') {
+      // Up arrow - 履歴を遡る
+      if (historyIndex < commandHistory.length - 1) {
+        historyIndex++;
+        const command =
+          commandHistory[commandHistory.length - 1 - historyIndex];
+        clearAndWriteCommand(command);
+      }
+    } else if (domEvent.code === 'ArrowDown') {
+      // Down arrow - 履歴を進む
+      if (historyIndex > 0) {
+        historyIndex--;
+        const command =
+          commandHistory[commandHistory.length - 1 - historyIndex];
+        clearAndWriteCommand(command);
+      } else if (historyIndex === 0) {
+        historyIndex = -1;
+        clearAndWriteCommand('');
+      }
     } else if (printable) {
+      // 通常の文字入力時は履歴位置をリセット
+      historyIndex = -1;
       commandBuffer += key;
       cursorPosition++;
       term.write(key);
