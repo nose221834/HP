@@ -17,7 +17,10 @@
     const wsHost = window.location.hostname === 'localhost' ? 'localhost' : '192.168.97.1';
     const ws = new WebSocket(`ws://${wsHost}:8000/api/v1/cable`);
     
+    // セッションIDを生成（ページ読み込み時に一度だけ）
+    const sessionId = crypto.randomUUID();
     log.textContent += `🔌 接続先: ws://${wsHost}:8000/api/v1/cable\n`;
+    log.textContent += `🔑 セッションID: ${sessionId}\n`;
 
     ws.onopen = () => {
       log.textContent += '✅ 接続しました\n';
@@ -72,6 +75,12 @@
       
       if (!command) return;
 
+      // コマンドとセッションIDを含むメッセージを作成
+      const message = {
+        command: command,
+        session_id: sessionId
+      };
+
       // ActionCableのメッセージフォーマットに従って送信
       ws.send(JSON.stringify({
         command: 'message',
@@ -80,7 +89,7 @@
         }),
         data: JSON.stringify({
           action: 'execute_command',
-          command: command
+          command: JSON.stringify(message) // コマンドとセッションIDを含むJSONを文字列化
         })
       }));
 
