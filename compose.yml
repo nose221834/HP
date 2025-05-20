@@ -30,6 +30,7 @@ services:
       REDIS_URL: "redis://:password@redis:6379/0"
     depends_on:
       - db
+      - redis
 
   redis:
     container_name: redis
@@ -42,7 +43,7 @@ services:
       PASSWORD: password
     volumes:
       - redis_data:/data
-
+    command: ["redis-server", "--requirepass", "password"]
 
   db:
     container_name: db
@@ -69,6 +70,8 @@ services:
     build:
       context: ./terminal
       dockerfile: Dockerfile
+    depends_on:
+      - redis
 
 volumes:
   db_data:
