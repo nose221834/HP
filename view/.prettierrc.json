@@ -4,23 +4,5 @@
   "tabWidth": 2,
   "trailingComma": "es5",
   "bracketSpacing": true,
-  "importOrder": [
-    "^(react/(.*)$)|^(react$)",
-    "<THIRD_PARTY_MODULES>",
-    "",
-    "^types$",
-    "^@local/(.*)$",
-    "^@/config/(.*)$",
-    "^@/lib/(.*)$",
-    "^@/components/(.*)$",
-    "^@/styles/(.*)$",
-    "^[./]"
-  ],
-  "importOrderSeparation": false,
-  "importOrderSortSpecifiers": true,
-  "importOrderBuiltinModulesToTop": true,
-  "importOrderParserPlugins": ["typescript", "jsx", "decorators-legacy"],
-  "importOrderMergeDuplicateImports": true,
-  "importOrderCombineTypeAndValueImports": true,
-  "plugins": ["@trivago/prettier-plugin-sort-imports"]
+  "plugins": ["prettier-plugin-tailwindcss"]
 }
