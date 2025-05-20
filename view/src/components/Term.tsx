@@ -9,7 +9,7 @@ export function Term() {
   let disposeTerm: () => void;
 
   onMount(() => {
-    const { term, dispose } = createTerm(container);
+    const { dispose } = createTerm(container);
     disposeTerm = dispose;
 
     // 例: term.writeln('Hello from Solid + xterm.js');

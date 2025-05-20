@@ -12,6 +12,7 @@ import { Terminal } from '@xterm/xterm';
 export function createTerm(container: HTMLDivElement): {
   term: Terminal;
   dispose: () => void;
+  // shell: (data: string) => void;
 } {
   // Terminal の初期化
   const term = new Terminal({
@@ -42,5 +43,18 @@ export function createTerm(container: HTMLDivElement): {
     }
   };
 
-  return { term, dispose };
+  // // 操作できるシェルを定義
+  // const shell = (data: string) => {
+  //   for (const char of data) {
+  //     term.write(char);
+  //     // 改行コードの処理
+  //     // \n の場合は \r\n に変換
+  //     // \r の場合は \r\n に変換
+  //     if (char === '\r' || char === '\n') {
+  //       term.write('\r\n');
+  //     }
+  //   }
+  // };
+
+  return { term, dispose /*, shell */ };
 }
