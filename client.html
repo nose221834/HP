@@ -45,14 +45,16 @@
             if (data.message.result) {
               log.textContent += `📨 実行結果(エラー時):\n${data.message.result}\n`;
             }
-          } else {
-            log.textContent += `📨 結果: ${JSON.stringify(data.message, null, 2)}\n`;
+          }
+          // 現在のディレクトリを表示
+          if (data.message.pwd) {
+            log.textContent += `📂 現在のディレクトリ: ${data.message.pwd}\n`;
           }
         } else {
-          log.textContent += `📨 受信: ${event.data}\n`;
+          // log.textContent += `📨 受信: ${event.data}\n`;
         }
       } catch (e) {
-        log.textContent += `📨 受信: ${event.data}\n`;
+        // log.textContent += `📨 受信: ${event.data}\n`;
       }
     };
 

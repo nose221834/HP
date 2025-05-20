@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,7 +24,11 @@ type CommandResult struct {
 	Command string `json:"command"`
 	Result  string `json:"result,omitempty"`
 	Error   string `json:"error,omitempty"`
+	Pwd     string `json:"pwd,omitempty"`
 }
+
+// グローバル変数として現在のディレクトリを保持
+var currentDir = "/home/nonroot"
 
 func main() {
 	// Redisクライアントの設定
@@ -73,6 +79,7 @@ func main() {
 				Status:  "error",
 				Command: command,
 				Error:   fmt.Sprintf("実行エラー: %v", err),
+				Pwd:     currentDir,
 			}
 		}
 
@@ -95,35 +102,50 @@ func main() {
 }
 
 func executeCommand(cmd string) (CommandResult, error) {
-	// コマンドの実行
+	// コマンドを解析して、cdコマンドの場合は特別に処理
 	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
+	if len(parts) > 0 && parts[0] == "cd" {
+		if len(parts) == 1 {
+			// cd のみの場合はホームディレクトリに移動
+			currentDir = "/home/nonroot"
+			return CommandResult{
+				Status:  "success",
+				Command: cmd,
+				Result:  "",
+				Pwd:     currentDir,
+			}, nil
+		}
+
+		// 新しいディレクトリパスを計算
+		newDir := parts[1]
+		if !strings.HasPrefix(newDir, "/") {
+			// 相対パスの場合
+			newDir = filepath.Join(currentDir, newDir)
+		}
+		newDir = filepath.Clean(newDir)
+
+		// ディレクトリの存在確認
+		if _, err := os.Stat(newDir); os.IsNotExist(err) {
+			return CommandResult{
+				Status:  "error",
+				Command: cmd,
+				Error:   fmt.Sprintf("ディレクトリが存在しません: %s", newDir),
+				Pwd:     currentDir,
+			}, nil
+		}
+
+		currentDir = newDir
 		return CommandResult{
-			Status:  "error",
+			Status:  "success",
 			Command: cmd,
-			Error:   "空のコマンド",
+			Result:  "",
+			Pwd:     currentDir,
 		}, nil
 	}
 
-	// 許可されたコマンドのチェック
-	allowedCommands := map[string]bool{
-		"ls":     true,
-		"pwd":    true,
-		"whoami": true,
-		"date":   true,
-	}
-
-	if !allowedCommands[parts[0]] {
-		return CommandResult{
-			Status:  "error",
-			Command: cmd,
-			Error:   "許可されていないコマンドです",
-		}, nil
-	}
-
-	// コマンドを実行
-	log.Printf("コマンドを実行: %s", cmd)
-	cmdObj := exec.Command(parts[0], parts[1:]...)
+	// 通常のコマンド実行
+	cmdObj := exec.Command("bash", "-c", cmd)
+	cmdObj.Dir = currentDir // 現在のディレクトリを設定
 	output, err := cmdObj.CombinedOutput()
 	outputStr := strings.TrimSpace(string(output))
 
@@ -133,17 +155,17 @@ func executeCommand(cmd string) (CommandResult, error) {
 			Status:  "error",
 			Command: cmd,
 			Error:   fmt.Sprintf("コマンド実行エラー: %v", err),
-			Result:  outputStr, // エラー時も出力を含める
+			Result:  outputStr,
+			Pwd:     currentDir,
 		}, nil
 	}
 
-	// 成功時の結果
 	result := CommandResult{
 		Status:  "success",
 		Command: cmd,
 		Result:  outputStr,
+		Pwd:     currentDir,
 	}
-
 	log.Printf("コマンド実行成功: %+v", result)
 	return result, nil
 }
