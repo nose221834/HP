@@ -39,13 +39,14 @@ type CommandResult struct {
 // 各セッションは独自のシェルプロセスと入出力パイプを持つ
 // これにより、クライアントごとに独立したシェル環境を提供
 type Session struct {
-	ID         string      // セッションの一意識別子（UUID）
-	CurrentDir string      // 現在の作業ディレクトリ（cdコマンドで変更可能）
-	Shell      *exec.Cmd   // 実行中のシェルプロセス（bash）
-	Stdin      *os.File    // 標準入力パイプ（コマンド入力用）
-	Stdout     *os.File    // 標準出力パイプ（コマンド出力用）
-	Stderr     *os.File    // 標準エラー出力パイプ（エラー出力用）
-	mu         sync.Mutex  // セッション操作の排他制御用ミューテックス（同時実行制御）
+	ID            string      // セッションの一意識別子（UUID）
+	CurrentDir    string      // 現在の作業ディレクトリ（cdコマンドで変更可能）
+	PreviousDir   string      // 直前の作業ディレクトリ（cd -コマンド用）
+	Shell         *exec.Cmd   // 実行中のシェルプロセス（bash）
+	Stdin         *os.File    // 標準入力パイプ（コマンド入力用）
+	Stdout        *os.File    // 標準出力パイプ（コマンド出力用）
+	Stderr        *os.File    // 標準エラー出力パイプ（エラー出力用）
+	mu            sync.Mutex  // セッション操作の排他制御用ミューテックス（同時実行制御）
 }
 
 // SessionManager は、複数のセッションを管理する構造体
@@ -123,12 +124,13 @@ func (sm *SessionManager) createSession(sessionID string) (*Session, error) {
 
 	// 新しいセッションを作成
 	session := &Session{
-		ID:         sessionID,
-		CurrentDir: "/home/nonroot", // デフォルトの作業ディレクトリ
-		Shell:      shell,
-		Stdin:      stdin.(*os.File),
-		Stdout:     stdout.(*os.File),
-		Stderr:     stderr.(*os.File),
+		ID:          sessionID,
+		CurrentDir:  "/home/nonroot", // デフォルトの作業ディレクトリ
+		PreviousDir: "/home/nonroot", // 初期値は現在のディレクトリと同じ
+		Shell:       shell,
+		Stdin:       stdin.(*os.File),
+		Stdout:      stdout.(*os.File),
+		Stderr:      stderr.(*os.File),
 	}
 
 	// セッションをマップに登録
@@ -272,6 +274,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 		// cdコマンドの特別処理
 		if len(parts) == 1 {
 			// cdのみの場合はデフォルトディレクトリに移動
+			session.PreviousDir = session.CurrentDir // 現在のディレクトリを保存
 			session.CurrentDir = "/home/nonroot"
 			return CommandResult{
 				Status:    "success",
@@ -282,14 +285,35 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 			}, nil
 		}
 
-		// 新しいディレクトリパスの処理
-		newDir := parts[1]
+		// cd - の特別処理
+		if parts[1] == "-" {
+			if session.PreviousDir == "" {
+				return CommandResult{
+					Status:    "error",
+					Command:   cmd,
+					Error:     "直前のディレクトリがありません",
+					Pwd:       session.CurrentDir,
+					SessionID: sessionID,
+				}, nil
+			}
+			// 現在のディレクトリと直前のディレクトリを入れ替え
+			session.PreviousDir, session.CurrentDir = session.CurrentDir, session.PreviousDir
+			return CommandResult{
+				Status:    "success",
+				Command:   cmd,
+				Result:    "",
+				Pwd:       session.CurrentDir,
+				SessionID: sessionID,
+			}, nil
+		}
+
+		// 通常のcdコマンド処理
 		// 相対パスの場合は現在のディレクトリからの相対パスに変換
-		if !strings.HasPrefix(newDir, "/") {
-			newDir = filepath.Join(session.CurrentDir, newDir)
+		if !strings.HasPrefix(parts[1], "/") {
+			parts[1] = filepath.Join(session.CurrentDir, parts[1])
 		}
 		// パスの正規化（..や.の解決）
-		newDir = filepath.Clean(newDir)
+		newDir := filepath.Clean(parts[1])
 
 		// ディレクトリの存在確認
 		if _, err := os.Stat(newDir); os.IsNotExist(err) {
@@ -303,6 +327,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 		}
 
 		// ディレクトリの変更
+		session.PreviousDir = session.CurrentDir // 現在のディレクトリを保存
 		session.CurrentDir = newDir
 		return CommandResult{
 			Status:    "success",
