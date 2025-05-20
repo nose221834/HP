@@ -24,7 +24,7 @@ jobs:
       # github appトークンを作成する
       - name: Create github app token
         id: create
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_KEY }}
