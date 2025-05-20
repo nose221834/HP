@@ -52,8 +52,8 @@ services:
   terminal:
     container_name: terminal
     build:
-      context: ./command
-      dockerfile: dockerFile
+      context: ./terminal
+      dockerfile: Dockerfile
     ports:
       - "8080:80"
     depends_on:
