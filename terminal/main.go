@@ -206,17 +206,24 @@ func main() {
 		// 受信したJSONメッセージをパース
 		var commandData struct {
 			Command   string `json:"command"`    // 実行するコマンド
-			SessionID string `json:"session_id"` // セッションID（未指定の場合は新規作成）
+			SessionID string `json:"session_id"` // セッションID
 		}
 
 		if err := json.Unmarshal([]byte(msg.Payload), &commandData); err != nil {
-			log.Printf("JSONパースエラー: %v", err)
+			log.Printf("JSONパースエラー: %v, ペイロード: %s", err, msg.Payload)
+			continue
+		}
+
+		// コマンドが空の場合はスキップ
+		if commandData.Command == "" {
+			log.Printf("空のコマンドを受信: %s", msg.Payload)
 			continue
 		}
 
 		// セッションIDが指定されていない場合は新規作成
 		if commandData.SessionID == "" {
 			commandData.SessionID = uuid.New().String()
+			log.Printf("新規セッションIDを生成: %s", commandData.SessionID)
 		}
 
 		// コマンドを実行し、結果を取得

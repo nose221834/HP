@@ -42,7 +42,7 @@ services:
       REDIS_PORT: 6379
       PASSWORD: password
     volumes:
-      - redis_data:/data
+      - ./redis:/data
     command: ["redis-server", "--requirepass", "password"]
 
   db:
@@ -53,7 +53,7 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: mydb
     volumes:
-      - db_data:/var/lib/postgresql/
+      - ./db://var/lib/pgadmin
 
   pgadmin:
     image: dpage/pgadmin4
@@ -73,8 +73,3 @@ services:
     depends_on:
       - redis
 
-volumes:
-  db_data:
-    driver: local
-  redis_data:
-    driver: local
