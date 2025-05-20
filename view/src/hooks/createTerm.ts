@@ -94,6 +94,11 @@ export function createTerm(container: HTMLDivElement): {
   term.onKey(({ key, domEvent }) => {
     if (isProcessingCommand) return;
 
+    // タブキーを無効化
+    if (domEvent.code === 'Tab') {
+      return;
+    }
+
     const printable =
       !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey;
 
