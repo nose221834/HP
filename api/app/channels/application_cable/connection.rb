@@ -6,4 +6,4 @@ module ApplicationCable
       self.connection_identifier = SecureRandom.uuid
     end
   end
-end 
+end

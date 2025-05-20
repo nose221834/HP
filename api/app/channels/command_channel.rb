@@ -8,14 +8,14 @@ class CommandChannel < ApplicationCable::Channel
   end
 
   def execute_command(data)
-    return unless data['command'].present?
+    return unless data["command"].present?
 
-    result = CommandExecutorService.execute(data['command'])
-    
+    result = CommandExecutorService.execute(data["command"])
+
     # 結果を特定のクライアントにのみ送信
     ActionCable.server.broadcast(
       "command_channel_#{connection.connection_identifier}",
       result
     )
   end
-end 
+end

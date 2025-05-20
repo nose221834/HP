@@ -13,7 +13,7 @@ class CommandExecutorService
 
     # Redisクライアントの初期化
     redis = Redis.new(
-      url: ENV.fetch('REDIS_URL', 'redis://:password@redis:6379/0'),
+      url: ENV.fetch("REDIS_URL", "redis://:password@redis:6379/0"),
       timeout: 5,
       reconnect_attempts: 3
     )
@@ -80,19 +80,19 @@ class CommandExecutorService
   private
 
   def self.allowed_command?(command)
-    base_command = command.split(' ').first
+    base_command = command.split(" ").first
     ALLOWED_COMMANDS.include?(base_command)
   end
 
   def self.sanitize_command(command)
     # コマンドインジェクション対策
-    command.gsub(/[;&|`$]/, '')
+    command.gsub(/[;&|`$]/, "")
   end
 
   def self.error_response(message)
     {
-      status: 'error',
+      status: "error",
       error: message
     }
   end
-end 
+end

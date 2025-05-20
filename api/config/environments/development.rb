@@ -68,5 +68,4 @@ Rails.application.configure do
   # 開発環境ではすべてのオリジンを許可（一時的な設定）
   config.action_cable.disable_request_forgery_protection = true
   config.action_cable.allowed_request_origins = [ /http:\/\/*/, /https:\/\/*/ ]
-
 end
