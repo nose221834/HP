@@ -97,6 +97,15 @@ export function createTerm(container: HTMLDivElement): {
     const printable =
       !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey;
 
+    // Ctrl+Cの処理
+    if (domEvent.ctrlKey && domEvent.code === 'KeyC') {
+      term.write('^C\r\n');
+      commandBuffer = '';
+      cursorPosition = 0;
+      writePrompt();
+      return;
+    }
+
     if (domEvent.code === 'Enter') {
       // Enter
       if (commandBuffer.trim()) {
