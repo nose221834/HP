@@ -36,7 +36,8 @@ export default tseslint.config(
     plugins: {
       '@typescript-eslint': tseslint.plugin,
       // @typescript-eslint プラグインを登録
-      import: importPlugin,
+      // prettier-ignore
+      'import': importPlugin,
       // import プラグインを登録
     },
 
