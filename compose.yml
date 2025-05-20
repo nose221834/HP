@@ -1,4 +1,20 @@
 services:
+
+
+  view:
+    container_name: view
+    build:
+      context: ./view
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./view:/app
+    command: ["sh", "-c", "pnpm install && pnpm run dev"]
+    environment:
+      NODE_ENV: development
+      API_URL: http://localhost:8000
+
   api:
     container_name: api
     build:
