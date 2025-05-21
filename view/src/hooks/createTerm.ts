@@ -4,42 +4,54 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
+import { createEffect, onCleanup } from 'solid-js';
+import { createStore } from 'solid-js/store';
 
-interface WebSocketMessage {
-  type?: string;
-  message?: {
-    result?: string;
-    error?: string;
-    pwd?: string;
-  };
-  identifier?: string;
-}
+import {
+  INITIAL_DIR,
+  MAX_HISTORY_SIZE,
+  TERMINAL_OPTIONS,
+  TerminalStateSchema,
+  WS_URL,
+  WebSocketMessageSchema,
+} from '../types/terminal';
 
+import type { TerminalState } from '../types/terminal';
+
+// 型定義
 interface WebSocketError extends Event {
   message?: string;
 }
 
 /**
- * 初期化済みの Terminal インスタンスと dispose 関数を返す。
- * @param container ターミナルを描画する HTMLDivElement
+ * ターミナルの状態を初期化
  */
-export function createTerm(container: HTMLDivElement): {
-  term: Terminal;
-  dispose: () => void;
-  executeCommand: (command: string) => void;
-} {
-  // Terminal の初期化
-  const term = new Terminal({
-    convertEol: true,
-    cursorBlink: true,
-    allowProposedApi: true,
+function createInitialState(): TerminalState {
+  return TerminalStateSchema.parse({
+    isConnected: false,
+    isSubscribed: false,
+    isReadyForInput: false,
+    currentDir: INITIAL_DIR,
+    commandHistory: [],
+    historyIndex: -1,
+    isProcessingCommand: false,
   });
+}
 
-  // FitAddon の適用
+/**
+ * ターミナルの初期化と状態管理を行う関数
+ */
+export function createTerm(container: HTMLDivElement) {
+  // 状態管理
+  const [store, setStore] = createStore<TerminalState>(createInitialState());
+  const sessionId = crypto.randomUUID();
+
+  // ターミナルの初期化
+  const term = new Terminal(TERMINAL_OPTIONS);
+
+  // アドオンの適用
   const fit = new FitAddon();
   term.loadAddon(fit);
-
-  // その他の標準アドオン
   term.loadAddon(new WebLinksAddon());
   term.loadAddon(new SearchAddon());
   term.loadAddon(new Unicode11Addon());
@@ -49,7 +61,6 @@ export function createTerm(container: HTMLDivElement): {
   try {
     webglAddon = new WebglAddon();
     term.loadAddon(webglAddon);
-    // WebGLのエラーハンドリング
     webglAddon.onContextLoss(() => {
       if (webglAddon) {
         webglAddon.dispose();
@@ -68,134 +79,74 @@ export function createTerm(container: HTMLDivElement): {
   term.open(container);
   fit.fit();
 
-  // WebSocket接続の設定
-  const wsHost =
-    window.location.hostname === 'localhost' ? 'localhost' : '192.168.97.1';
-  const ws = new WebSocket(`ws://${wsHost}:8000/api/v1/cable`);
-  const sessionId = crypto.randomUUID();
+  // 初期メッセージの表示
+  term.writeln(`🔌 接続先: ${WS_URL}`);
+  term.writeln(`🔑 セッションID: ${sessionId}`);
 
-  // 現在のディレクトリを保持
-  let currentDir = '/home/nonroot';
+  // WebSocket接続の設定
+  const ws = new WebSocket(WS_URL);
+
+  // 現在のコマンドバッファを管理
   let commandBuffer = '';
   let cursorPosition = 0;
-  let isProcessingCommand = false;
-  let isInitialConnection = true;
-  let isReadyForInput = false; // 入力を許可するかどうかのフラグ
-
-  // コマンド履歴の管理
-  const commandHistory: string[] = [];
-  let historyIndex = -1; // 現在の履歴位置（-1は現在のコマンド入力中）
 
   // プロンプトを表示する関数
   const writePrompt = () => {
-    if (!isReadyForInput) return; // 準備ができていない場合はプロンプトを表示しない
+    if (!store.isReadyForInput) return;
     term.write('\r\n');
-    term.write(`\x1b[32m${currentDir}\x1b[0m $ `);
-    cursorPosition = 0;
+    term.write(`\x1b[32m${store.currentDir}\x1b[0m $ `);
     commandBuffer = '';
-    historyIndex = -1; // プロンプト表示時に履歴位置をリセット
+    cursorPosition = 0;
   };
 
   // 現在の行をクリアして新しいコマンドを表示する関数
   const clearAndWriteCommand = (command: string) => {
-    if (!isReadyForInput) return; // 準備ができていない場合は何もしない
+    if (!store.isReadyForInput) return;
     term.write('\r');
-    term.write(`\x1b[32m${currentDir}\x1b[0m $ `);
-    term.write('\x1b[K'); // カーソル位置から行末までクリア
-
-    // 新しいコマンドを表示
+    term.write(`\x1b[32m${store.currentDir}\x1b[0m $ `);
+    term.write('\x1b[K');
     commandBuffer = command;
     cursorPosition = command.length;
     term.write(command);
   };
 
-  // 初期メッセージの表示
-  term.writeln(`🔌 接続先: ws://${wsHost}:8000/api/v1/cable`);
-  term.writeln(`🔑 セッションID: ${sessionId}`);
-
-  // キー入力の処理
-  term.onKey(({ key, domEvent }) => {
-    if (!isReadyForInput || isProcessingCommand) return; // 準備ができていない場合は入力を無視
-
-    // タブキーを無効化
-    if (domEvent.code === 'Tab') {
-      return;
-    }
-
-    const printable =
-      !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey;
-
-    // Ctrl+Cの処理
-    if (domEvent.ctrlKey && domEvent.code === 'KeyC') {
-      term.write('^C\r\n');
-      commandBuffer = '';
-      cursorPosition = 0;
+  // コマンドを実行する関数
+  const executeCommand = (command: string) => {
+    if (!command.trim()) {
       writePrompt();
       return;
     }
 
-    if (domEvent.code === 'Enter') {
-      // Enter
-      if (commandBuffer.trim()) {
-        term.write('\r\n');
-        commandHistory.push(commandBuffer);
-        if (commandHistory.length > 100) {
-          commandHistory.shift();
-        }
-        executeCommand(commandBuffer);
-      } else {
-        writePrompt();
-      }
-    } else if (domEvent.code === 'Backspace') {
-      // Backspace
-      if (cursorPosition > 0) {
-        commandBuffer = commandBuffer.slice(0, -1);
-        cursorPosition--;
-        term.write('\b \b');
-      }
-    } else if (domEvent.code === 'ArrowLeft') {
-      // Left arrow
-      if (cursorPosition > 0) {
-        cursorPosition--;
-        term.write('\x1b[D');
-      }
-    } else if (domEvent.code === 'ArrowRight') {
-      // Right arrow
-      if (cursorPosition < commandBuffer.length) {
-        cursorPosition++;
-        term.write('\x1b[C');
-      }
-    } else if (domEvent.code === 'ArrowUp') {
-      // Up arrow - 履歴を遡る
-      if (historyIndex < commandHistory.length - 1) {
-        historyIndex++;
-        const command =
-          commandHistory[commandHistory.length - 1 - historyIndex];
-        clearAndWriteCommand(command);
-      }
-    } else if (domEvent.code === 'ArrowDown') {
-      // Down arrow - 履歴を進む
-      if (historyIndex > 0) {
-        historyIndex--;
-        const command =
-          commandHistory[commandHistory.length - 1 - historyIndex];
-        clearAndWriteCommand(command);
-      } else if (historyIndex === 0) {
-        historyIndex = -1;
-        clearAndWriteCommand('');
-      }
-    } else if (printable) {
-      // 通常の文字入力時は履歴位置をリセット
-      historyIndex = -1;
-      commandBuffer += key;
-      cursorPosition++;
-      term.write(key);
-    }
-  });
+    setStore({
+      isProcessingCommand: true,
+      commandHistory: [...store.commandHistory, command].slice(
+        -MAX_HISTORY_SIZE
+      ),
+      historyIndex: -1,
+    });
 
+    ws.send(
+      JSON.stringify({
+        command: 'message',
+        identifier: JSON.stringify({
+          channel: 'CommandChannel',
+        }),
+        data: JSON.stringify({
+          action: 'execute_command',
+          command: JSON.stringify({
+            command,
+            session_id: sessionId,
+          }),
+        }),
+      })
+    );
+  };
+
+  // WebSocketイベントハンドラ
   ws.onopen = () => {
     term.writeln('✅ 接続しました');
-    // ActionCableの接続確立メッセージを送信
+    setStore('isConnected', true);
+
     ws.send(
       JSON.stringify({
         command: 'subscribe',
@@ -208,58 +159,58 @@ export function createTerm(container: HTMLDivElement): {
 
   ws.onmessage = (event: MessageEvent) => {
     try {
-      const data = JSON.parse(event.data as string) as WebSocketMessage;
+      const data = WebSocketMessageSchema.parse(
+        JSON.parse(event.data as string)
+      );
 
-      // pingメッセージは完全に無視
-      if (data.type === 'ping') {
+      if (data.type === 'ping') return;
+
+      if (data.type === 'welcome') {
+        term.writeln('✅ ActionCable接続が確立されました');
         return;
       }
 
-      // 初期接続時のメッセージは最初の1回だけ表示
-      if (isInitialConnection) {
-        if (data.type === 'welcome') {
-          term.writeln('✅ ActionCable接続が確立されました');
-          return;
-        }
-        if (data.type === 'confirm_subscription') {
-          term.writeln('✅ チャンネルにサブスクライブしました');
-          isInitialConnection = false;
-          isReadyForInput = true; // 接続とサブスクリプションが完了したら入力を許可
-          writePrompt(); // 最初のプロンプトを表示
-          return;
-        }
+      if (data.type === 'confirm_subscription') {
+        term.writeln('✅ チャンネルにサブスクライブしました');
+        setStore({
+          isSubscribed: true,
+          isReadyForInput: true,
+        });
+        writePrompt();
+        return;
       }
 
-      // コマンド実行結果の処理
       if (data.message) {
-        // ディレクトリ変更の処理
-        if (data.message.pwd) {
-          currentDir = data.message.pwd;
-        }
+        // メッセージがオブジェクトの場合
+        if (typeof data.message === 'object') {
+          if (data.message.pwd) {
+            setStore('currentDir', data.message.pwd);
+          }
 
-        // エラーメッセージの処理
-        if (data.message.error) {
-          term.writeln(`\x1b[31m❌ エラー: ${data.message.error}\x1b[0m`);
-          if (data.message.result?.trim()) {
+          if (data.message.error) {
+            term.writeln(`\x1b[31m❌ エラー: ${data.message.error}\x1b[0m`);
+            if (data.message.result?.trim()) {
+              term.writeln(data.message.result);
+            }
+          } else if (data.message.result?.trim()) {
             term.writeln(data.message.result);
           }
         }
-        // 通常のコマンド結果の処理
-        else if (data.message.result?.trim()) {
-          term.writeln(data.message.result);
+        // メッセージが文字列または数値の場合
+        else {
+          term.writeln(String(data.message));
         }
 
-        // コマンド実行が完了したら必ずプロンプトを表示
-        if (isProcessingCommand) {
-          isProcessingCommand = false;
+        if (store.isProcessingCommand) {
+          setStore('isProcessingCommand', false);
           writePrompt();
         }
       }
     } catch (error) {
       console.error('WebSocket message processing error:', error);
-      if (isProcessingCommand) {
-        isProcessingCommand = false;
-        if (isReadyForInput) {
+      if (store.isProcessingCommand) {
+        setStore('isProcessingCommand', false);
+        if (store.isReadyForInput) {
           writePrompt();
         }
       }
@@ -268,8 +219,12 @@ export function createTerm(container: HTMLDivElement): {
 
   ws.onclose = () => {
     term.writeln('🔌 接続が閉じられました');
-    isProcessingCommand = false;
-    isReadyForInput = false; // 接続が切れたら入力を無効化
+    setStore({
+      isConnected: false,
+      isSubscribed: false,
+      isReadyForInput: false,
+      isProcessingCommand: false,
+    });
   };
 
   ws.onerror = (event: Event) => {
@@ -277,42 +232,125 @@ export function createTerm(container: HTMLDivElement): {
     term.writeln(
       `\x1b[31m⚠️ エラー: ${error.message ?? '不明なエラーが発生しました'}\x1b[0m`
     );
-    isProcessingCommand = false;
-    isReadyForInput = false; // エラー時も入力を無効化
+    setStore({
+      isConnected: false,
+      isSubscribed: false,
+      isReadyForInput: false,
+      isProcessingCommand: false,
+    });
   };
 
-  // コマンド実行関数
-  const executeCommand = (command: string) => {
-    if (!command.trim()) {
-      writePrompt();
-      return;
-    }
+  // キー入力の処理
+  createEffect(() => {
+    const handler = ({
+      key,
+      domEvent,
+    }: {
+      key: string;
+      domEvent: KeyboardEvent;
+    }) => {
+      if (!store.isReadyForInput || store.isProcessingCommand) return;
 
-    const message = {
-      command,
-      session_id: sessionId,
+      // タブキーを無効化
+      if (domEvent.code === 'Tab') {
+        domEvent.preventDefault();
+        return;
+      }
+
+      const printable =
+        !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey;
+
+      // Ctrl+Cの処理
+      if (domEvent.ctrlKey && domEvent.code === 'KeyC') {
+        term.write('^C\r\n');
+        setStore('historyIndex', -1);
+        writePrompt();
+        return;
+      }
+
+      // Enterキーの処理
+      if (domEvent.code === 'Enter') {
+        term.write('\r\n');
+        if (commandBuffer.trim()) {
+          executeCommand(commandBuffer);
+        } else {
+          writePrompt();
+        }
+        return;
+      }
+
+      // Backspaceキーの処理
+      if (domEvent.code === 'Backspace') {
+        if (cursorPosition > 0) {
+          commandBuffer = commandBuffer.slice(0, -1);
+          cursorPosition--;
+          term.write('\b \b');
+        }
+        return;
+      }
+
+      // 矢印キーの処理
+      if (domEvent.code === 'ArrowLeft') {
+        if (cursorPosition > 0) {
+          cursorPosition--;
+          term.write('\x1b[D');
+        }
+        return;
+      }
+
+      if (domEvent.code === 'ArrowRight') {
+        if (cursorPosition < commandBuffer.length) {
+          cursorPosition++;
+          term.write('\x1b[C');
+        }
+        return;
+      }
+
+      if (domEvent.code === 'ArrowUp') {
+        if (store.historyIndex < store.commandHistory.length - 1) {
+          setStore('historyIndex', store.historyIndex + 1);
+          const command =
+            store.commandHistory[
+              store.commandHistory.length - 1 - store.historyIndex
+            ];
+          clearAndWriteCommand(command);
+        }
+        return;
+      }
+
+      if (domEvent.code === 'ArrowDown') {
+        if (store.historyIndex > 0) {
+          setStore('historyIndex', store.historyIndex - 1);
+          const command =
+            store.commandHistory[
+              store.commandHistory.length - 1 - store.historyIndex
+            ];
+          clearAndWriteCommand(command);
+        } else if (store.historyIndex === 0) {
+          setStore('historyIndex', -1);
+          clearAndWriteCommand('');
+        }
+        return;
+      }
+
+      // 通常の文字入力
+      if (printable) {
+        setStore('historyIndex', -1);
+        commandBuffer += key;
+        cursorPosition++;
+        term.write(key);
+      }
     };
 
-    isProcessingCommand = true;
+    term.onKey(handler);
+    onCleanup(() => {
+      // キーハンドラーはterm.dispose()で自動的にクリーンアップされる
+    });
+  });
 
-    ws.send(
-      JSON.stringify({
-        command: 'message',
-        identifier: JSON.stringify({
-          channel: 'CommandChannel',
-        }),
-        data: JSON.stringify({
-          action: 'execute_command',
-          command: JSON.stringify(message),
-        }),
-      })
-    );
-  };
-
-  // dispose 用の関数
+  // クリーンアップ関数
   const dispose = () => {
     try {
-      // WebGLアドオンのクリーンアップ
       if (webglAddon) {
         webglAddon.dispose();
       }
@@ -323,5 +361,12 @@ export function createTerm(container: HTMLDivElement): {
     }
   };
 
-  return { term, dispose, executeCommand };
+  onCleanup(dispose);
+
+  return {
+    term,
+    store,
+    dispose,
+    executeCommand,
+  };
 }
