@@ -59,6 +59,7 @@ export function createTerm(container: HTMLDivElement): {
   let cursorPosition = 0;
   let isProcessingCommand = false;
   let isInitialConnection = true;
+  let isReadyForInput = false; // 入力を許可するかどうかのフラグ
 
   // コマンド履歴の管理
   const commandHistory: string[] = [];
@@ -66,6 +67,7 @@ export function createTerm(container: HTMLDivElement): {
 
   // プロンプトを表示する関数
   const writePrompt = () => {
+    if (!isReadyForInput) return; // 準備ができていない場合はプロンプトを表示しない
     term.write('\r\n');
     term.write(`\x1b[32m${currentDir}\x1b[0m $ `);
     cursorPosition = 0;
@@ -75,7 +77,7 @@ export function createTerm(container: HTMLDivElement): {
 
   // 現在の行をクリアして新しいコマンドを表示する関数
   const clearAndWriteCommand = (command: string) => {
-    // 現在の行をクリア
+    if (!isReadyForInput) return; // 準備ができていない場合は何もしない
     term.write('\r');
     term.write(`\x1b[32m${currentDir}\x1b[0m $ `);
     term.write('\x1b[K'); // カーソル位置から行末までクリア
@@ -92,7 +94,7 @@ export function createTerm(container: HTMLDivElement): {
 
   // キー入力の処理
   term.onKey(({ key, domEvent }) => {
-    if (isProcessingCommand) return;
+    if (!isReadyForInput || isProcessingCommand) return; // 準備ができていない場合は入力を無視
 
     // タブキーを無効化
     if (domEvent.code === 'Tab') {
@@ -181,7 +183,6 @@ export function createTerm(container: HTMLDivElement): {
         }),
       })
     );
-    writePrompt();
   };
 
   ws.onmessage = (event: MessageEvent) => {
@@ -202,6 +203,8 @@ export function createTerm(container: HTMLDivElement): {
         if (data.type === 'confirm_subscription') {
           term.writeln('✅ チャンネルにサブスクライブしました');
           isInitialConnection = false;
+          isReadyForInput = true; // 接続とサブスクリプションが完了したら入力を許可
+          writePrompt(); // 最初のプロンプトを表示
           return;
         }
       }
@@ -233,10 +236,11 @@ export function createTerm(container: HTMLDivElement): {
       }
     } catch (error) {
       console.error('WebSocket message processing error:', error);
-      // エラー時もプロンプトを表示して操作可能な状態を維持
       if (isProcessingCommand) {
         isProcessingCommand = false;
-        writePrompt();
+        if (isReadyForInput) {
+          writePrompt();
+        }
       }
     }
   };
@@ -244,7 +248,7 @@ export function createTerm(container: HTMLDivElement): {
   ws.onclose = () => {
     term.writeln('🔌 接続が閉じられました');
     isProcessingCommand = false;
-    writePrompt();
+    isReadyForInput = false; // 接続が切れたら入力を無効化
   };
 
   ws.onerror = (event: Event) => {
@@ -253,7 +257,7 @@ export function createTerm(container: HTMLDivElement): {
       `\x1b[31m⚠️ エラー: ${error.message ?? '不明なエラーが発生しました'}\x1b[0m`
     );
     isProcessingCommand = false;
-    writePrompt();
+    isReadyForInput = false; // エラー時も入力を無効化
   };
 
   // コマンド実行関数
