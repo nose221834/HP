@@ -4,14 +4,17 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
-import { createEffect, onCleanup } from 'solid-js';
+import { createEffect, createSignal, onCleanup } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import { z } from 'zod';
 
 import {
+  CommandSchema,
   INITIAL_DIR,
   MAX_HISTORY_SIZE,
   TERMINAL_OPTIONS,
   TerminalStateSchema,
+  WS_RECONNECT_CONFIG,
   WS_URL,
   WebSocketMessageSchema,
 } from '../types/terminal';
@@ -20,6 +23,7 @@ import type {
   TerminalReturn,
   TerminalState,
   WebSocketError,
+  WebSocketMessage,
 } from '../types/terminal';
 
 /**
@@ -35,6 +39,227 @@ function createInitialState(): TerminalState {
     historyIndex: -1,
     isProcessingCommand: false,
   });
+}
+
+/**
+ * WebSocket接続を管理する関数
+ */
+function createWebSocketManager(
+  sessionId: string,
+  term: Terminal,
+  setStore: (fn: (state: TerminalState) => Partial<TerminalState>) => void,
+  initialState: TerminalState
+) {
+  const [ws, setWs] = createSignal<WebSocket | null>(null);
+  const [reconnectAttempts, setReconnectAttempts] = createSignal(0);
+  const [reconnectTimeout, setReconnectTimeout] = createSignal<number | null>(
+    null
+  );
+  const [currentState, setCurrentState] = createSignal(initialState);
+
+  const updateState = (update: Partial<TerminalState>) => {
+    setCurrentState((prev) => ({ ...prev, ...update }));
+    setStore(() => update);
+  };
+
+  const writePrompt = () => {
+    if (!currentState().isReadyForInput) return;
+    term.write('\r\n');
+    term.write(`\x1b[32m${currentState().currentDir}\x1b[0m $ `);
+  };
+
+  const handleMessage = (data: WebSocketMessage) => {
+    if (!data.message) return;
+
+    if (typeof data.message === 'object' && data.message !== null) {
+      if ('pwd' in data.message && typeof data.message.pwd === 'string') {
+        updateState({ currentDir: data.message.pwd });
+      }
+
+      if ('error' in data.message && typeof data.message.error === 'string') {
+        term.writeln(`\x1b[31m❌ エラー: ${data.message.error}\x1b[0m`);
+        if (data.message.result?.trim()) {
+          term.writeln(data.message.result);
+        }
+      } else if (data.message.result?.trim()) {
+        term.writeln(data.message.result);
+      }
+    } else {
+      term.writeln(String(data.message));
+    }
+
+    updateState({ isProcessingCommand: false });
+    writePrompt();
+  };
+
+  const handleError = () => {
+    updateState({
+      isConnected: false,
+      isSubscribed: false,
+      isReadyForInput: false,
+      isProcessingCommand: false,
+    });
+    attemptReconnect();
+  };
+
+  const attemptReconnect = () => {
+    const timeout = reconnectTimeout();
+    if (timeout) {
+      window.clearTimeout(timeout);
+    }
+
+    if (reconnectAttempts() >= WS_RECONNECT_CONFIG.maxRetries) {
+      term.writeln('\x1b[31m❌ 再接続の試行回数が上限に達しました\x1b[0m');
+      return;
+    }
+
+    const delay = Math.min(
+      WS_RECONNECT_CONFIG.initialDelay *
+        Math.pow(WS_RECONNECT_CONFIG.backoffFactor, reconnectAttempts()),
+      WS_RECONNECT_CONFIG.maxDelay
+    );
+
+    term.writeln(`\x1b[33m🔄 ${delay / 1000}秒後に再接続を試みます...\x1b[0m`);
+    const newTimeout = window.setTimeout(() => {
+      setReconnectAttempts((prev) => prev + 1);
+      connect();
+    }, delay);
+    setReconnectTimeout(newTimeout);
+  };
+
+  const setupEventHandlers = (socket: WebSocket) => {
+    socket.onopen = () => {
+      term.writeln('✅ 接続しました');
+      updateState({
+        isConnected: true,
+        isProcessingCommand: false,
+      });
+      setReconnectAttempts(0);
+
+      socket.send(
+        JSON.stringify({
+          command: 'subscribe',
+          identifier: JSON.stringify({
+            channel: 'CommandChannel',
+          }),
+        })
+      );
+    };
+
+    socket.onmessage = (event: MessageEvent) => {
+      try {
+        const data = WebSocketMessageSchema.parse(
+          JSON.parse(event.data as string)
+        );
+
+        if (data.type === 'ping') return;
+
+        if (data.type === 'welcome') {
+          term.writeln('✅ ActionCable接続が確立されました');
+          return;
+        }
+
+        if (data.type === 'confirm_subscription') {
+          term.writeln('✅ チャンネルにサブスクライブしました');
+          updateState({
+            isSubscribed: true,
+            isReadyForInput: true,
+          });
+          writePrompt();
+          return;
+        }
+
+        if (data.message) {
+          handleMessage(data);
+        }
+      } catch (error) {
+        console.error('WebSocket message processing error:', error);
+        handleError();
+      }
+    };
+
+    socket.onclose = () => {
+      term.writeln('🔌 接続が閉じられました');
+      updateState({
+        isConnected: false,
+        isSubscribed: false,
+        isReadyForInput: false,
+        isProcessingCommand: false,
+      });
+      attemptReconnect();
+    };
+
+    socket.onerror = (event: Event) => {
+      const error = event as WebSocketError;
+      term.writeln(
+        `\x1b[31m⚠️ エラー: ${error.message ?? '不明なエラーが発生しました'}\x1b[0m`
+      );
+      handleError();
+    };
+  };
+
+  const connect = () => {
+    if (ws()?.readyState === WebSocket.OPEN) return;
+
+    const socket = new WebSocket(WS_URL);
+    setWs(socket);
+    setupEventHandlers(socket);
+  };
+
+  const sendCommand = (command: string): boolean => {
+    try {
+      const validatedCommand = CommandSchema.parse({
+        command,
+        session_id: sessionId,
+      });
+
+      const socket = ws();
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(
+          JSON.stringify({
+            command: 'message',
+            identifier: JSON.stringify({
+              channel: 'CommandChannel',
+            }),
+            data: JSON.stringify({
+              action: 'execute_command',
+              command: JSON.stringify(validatedCommand),
+            }),
+          })
+        );
+        return true;
+      }
+      return false;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        term.writeln(
+          `\x1b[31m❌ バリデーションエラー: ${error.errors[0].message}\x1b[0m`
+        );
+      } else {
+        term.writeln('\x1b[31m❌ コマンドの送信に失敗しました\x1b[0m');
+      }
+      return false;
+    }
+  };
+
+  const disconnect = () => {
+    const timeout = reconnectTimeout();
+    if (timeout) {
+      window.clearTimeout(timeout);
+      setReconnectTimeout(null);
+    }
+    const socket = ws();
+    if (socket) {
+      socket.close();
+      setWs(null);
+    }
+  };
+
+  return {
+    connect,
+    disconnect,
+    sendCommand,
+  };
 }
 
 /**
@@ -82,8 +307,7 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
   term.writeln(`🔌 接続先: ${WS_URL}`);
   term.writeln(`🔑 セッションID: ${sessionId}`);
 
-  // WebSocket接続の設定
-  const ws = new WebSocket(WS_URL);
+  const wsManager = createWebSocketManager(sessionId, term, setStore, store);
 
   // 現在のコマンドバッファを管理
   let commandBuffer = '';
@@ -116,128 +340,22 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
       return;
     }
 
-    setStore({
+    setStore((state) => ({
       isProcessingCommand: true,
-      commandHistory: [...store.commandHistory, command].slice(
+      commandHistory: [...state.commandHistory, command].slice(
         -MAX_HISTORY_SIZE
       ),
       historyIndex: -1,
-    });
+    }));
 
-    ws.send(
-      JSON.stringify({
-        command: 'message',
-        identifier: JSON.stringify({
-          channel: 'CommandChannel',
-        }),
-        data: JSON.stringify({
-          action: 'execute_command',
-          command: JSON.stringify({
-            command,
-            session_id: sessionId,
-          }),
-        }),
-      })
-    );
-  };
-
-  // WebSocketイベントハンドラ
-  ws.onopen = () => {
-    term.writeln('✅ 接続しました');
-    setStore('isConnected', true);
-
-    ws.send(
-      JSON.stringify({
-        command: 'subscribe',
-        identifier: JSON.stringify({
-          channel: 'CommandChannel',
-        }),
-      })
-    );
-  };
-
-  ws.onmessage = (event: MessageEvent) => {
-    try {
-      const data = WebSocketMessageSchema.parse(
-        JSON.parse(event.data as string)
-      );
-
-      if (data.type === 'ping') return;
-
-      if (data.type === 'welcome') {
-        term.writeln('✅ ActionCable接続が確立されました');
-        return;
-      }
-
-      if (data.type === 'confirm_subscription') {
-        term.writeln('✅ チャンネルにサブスクライブしました');
-        setStore({
-          isSubscribed: true,
-          isReadyForInput: true,
-        });
-        writePrompt();
-        return;
-      }
-
-      if (data.message) {
-        // メッセージがオブジェクトの場合
-        if (typeof data.message === 'object') {
-          if (data.message.pwd) {
-            setStore('currentDir', data.message.pwd);
-          }
-
-          if (data.message.error) {
-            term.writeln(`\x1b[31m❌ エラー: ${data.message.error}\x1b[0m`);
-            if (data.message.result?.trim()) {
-              term.writeln(data.message.result);
-            }
-          } else if (data.message.result?.trim()) {
-            term.writeln(data.message.result);
-          }
-        }
-        // メッセージが文字列または数値の場合
-        else {
-          term.writeln(String(data.message));
-        }
-
-        if (store.isProcessingCommand) {
-          setStore('isProcessingCommand', false);
-          writePrompt();
-        }
-      }
-    } catch (error) {
-      console.error('WebSocket message processing error:', error);
-      if (store.isProcessingCommand) {
-        setStore('isProcessingCommand', false);
-        if (store.isReadyForInput) {
-          writePrompt();
-        }
-      }
+    if (!wsManager.sendCommand(command)) {
+      setStore(() => ({ isProcessingCommand: false }));
+      writePrompt();
     }
   };
 
-  ws.onclose = () => {
-    term.writeln('🔌 接続が閉じられました');
-    setStore({
-      isConnected: false,
-      isSubscribed: false,
-      isReadyForInput: false,
-      isProcessingCommand: false,
-    });
-  };
-
-  ws.onerror = (event: Event) => {
-    const error = event as WebSocketError;
-    term.writeln(
-      `\x1b[31m⚠️ エラー: ${error.message ?? '不明なエラーが発生しました'}\x1b[0m`
-    );
-    setStore({
-      isConnected: false,
-      isSubscribed: false,
-      isReadyForInput: false,
-      isProcessingCommand: false,
-    });
-  };
+  // WebSocket接続の開始
+  wsManager.connect();
 
   // キー入力の処理
   createEffect(() => {
@@ -353,7 +471,7 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
       if (webglAddon) {
         webglAddon.dispose();
       }
-      ws.close();
+      wsManager.disconnect();
       term.dispose();
     } catch {
       // ignore

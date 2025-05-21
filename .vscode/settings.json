@@ -17,7 +17,7 @@
     // Prettierの自動修正を有効化
     "source.fixAll.prettier": "explicit",
     // importの整理を有効化
-    "source.organizeImports": "explicit"
+    // "source.organizeImports": "explicit"
   },
 
   // 以下、各拡張子ごとに明示的に設定

@@ -65,3 +65,26 @@ export const TERMINAL_OPTIONS = {
   cursorBlink: true,
   allowProposedApi: true,
 } as const;
+
+// コマンドのバリデーションスキーマ
+export const CommandSchema = z.object({
+  command: z
+    .string()
+    .min(1, 'コマンドを入力してください')
+    .max(1000, 'コマンドが長すぎます（最大1000文字）')
+    .refine(
+      (cmd) => !cmd.includes('\x00') && !cmd.includes('\x1b'),
+      '無効な制御文字が含まれています'
+    ),
+  session_id: z.string().uuid(),
+});
+
+export type Command = z.infer<typeof CommandSchema>;
+
+// WebSocket再接続の設定
+export const WS_RECONNECT_CONFIG = {
+  maxRetries: 5,
+  initialDelay: 1000, // 1秒
+  maxDelay: 30000, // 30秒
+  backoffFactor: 1.5,
+} as const;
