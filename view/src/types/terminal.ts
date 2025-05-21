@@ -1,3 +1,4 @@
+import { Terminal } from '@xterm/xterm';
 import { z } from 'zod';
 
 // WebSocketメッセージのスキーマ
@@ -40,6 +41,14 @@ export const TerminalStateSchema = z.object({
 });
 
 export type TerminalState = z.infer<typeof TerminalStateSchema>;
+
+// ターミナル関数の戻り値の型
+export interface TerminalReturn {
+  term: Terminal;
+  store: TerminalState;
+  dispose: () => void;
+  executeCommand: (command: string) => void;
+}
 
 // 定数
 export const INITIAL_DIR = '/home/nonroot';

@@ -16,12 +16,11 @@ import {
   WebSocketMessageSchema,
 } from '../types/terminal';
 
-import type { TerminalState } from '../types/terminal';
-
-// 型定義
-interface WebSocketError extends Event {
-  message?: string;
-}
+import type {
+  TerminalReturn,
+  TerminalState,
+  WebSocketError,
+} from '../types/terminal';
 
 /**
  * ターミナルの状態を初期化
@@ -41,7 +40,7 @@ function createInitialState(): TerminalState {
 /**
  * ターミナルの初期化と状態管理を行う関数
  */
-export function createTerm(container: HTMLDivElement) {
+export function createTerm(container: HTMLDivElement): TerminalReturn {
   // 状態管理
   const [store, setStore] = createStore<TerminalState>(createInitialState());
   const sessionId = crypto.randomUUID();
