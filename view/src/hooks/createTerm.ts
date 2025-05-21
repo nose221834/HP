@@ -2,6 +2,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 
 interface WebSocketMessage {
@@ -42,6 +43,26 @@ export function createTerm(container: HTMLDivElement): {
   term.loadAddon(new WebLinksAddon());
   term.loadAddon(new SearchAddon());
   term.loadAddon(new Unicode11Addon());
+
+  // WebGLアドオンの適用
+  let webglAddon: WebglAddon | undefined;
+  try {
+    webglAddon = new WebglAddon();
+    term.loadAddon(webglAddon);
+    // WebGLのエラーハンドリング
+    webglAddon.onContextLoss(() => {
+      if (webglAddon) {
+        webglAddon.dispose();
+        webglAddon = undefined;
+      }
+      console.warn('WebGL context was lost, falling back to canvas renderer');
+    });
+  } catch (e) {
+    console.warn(
+      'WebGL addon could not be loaded, falling back to canvas renderer:',
+      e
+    );
+  }
 
   // 描画 & フィット
   term.open(container);
@@ -291,6 +312,10 @@ export function createTerm(container: HTMLDivElement): {
   // dispose 用の関数
   const dispose = () => {
     try {
+      // WebGLアドオンのクリーンアップ
+      if (webglAddon) {
+        webglAddon.dispose();
+      }
       ws.close();
       term.dispose();
     } catch {
