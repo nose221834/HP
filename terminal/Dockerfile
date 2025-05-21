@@ -59,7 +59,7 @@ COPY --from=go-builder /app/terminal /usr/local/bin/terminal
 
 # groupとpasswdをコピー
 COPY ./etc /etc
-COPY ./config/ /home/nonroot/
+COPY ./nonroot/ /home/nonroot/
 
 
 # アプリケーションの起動
