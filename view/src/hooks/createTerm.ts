@@ -35,6 +35,7 @@ function createInitialState(): TerminalState {
     isSubscribed: false,
     isReadyForInput: false,
     currentDir: INITIAL_DIR,
+    username: 'nonroot',
     commandHistory: [],
     historyIndex: -1,
     isProcessingCommand: false,
@@ -64,7 +65,11 @@ function createWebSocketManager(
 
   const writePrompt = () => {
     if (!currentState().isReadyForInput) return;
-    term.write(`\x1b[32m${currentState().currentDir}\x1b[0m $ `);
+    const username = currentState().username || 'nonroot';
+    const hostname = 'terminal';
+    term.write(
+      `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${currentState().currentDir}\x1b[0m $ `
+    );
   };
 
   const handleMessage = (data: WebSocketMessage) => {
@@ -73,6 +78,13 @@ function createWebSocketManager(
     if (typeof data.message === 'object' && data.message !== null) {
       if ('pwd' in data.message && typeof data.message.pwd === 'string') {
         updateState({ currentDir: data.message.pwd });
+      }
+
+      if (
+        'username' in data.message &&
+        typeof data.message.username === 'string'
+      ) {
+        updateState({ username: data.message.username });
       }
 
       if ('error' in data.message && typeof data.message.error === 'string') {
@@ -345,7 +357,11 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
   // プロンプトを表示する関数
   const writePrompt = () => {
     if (!store.isReadyForInput) return;
-    term.write(`\x1b[32m${store.currentDir}\x1b[0m $ `);
+    const username = store.username ?? 'nonroot';
+    const hostname = 'terminal';
+    term.write(
+      `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${store.currentDir}\x1b[0m $ `
+    );
     commandBuffer = '';
     cursorPosition = 0;
   };
@@ -353,8 +369,12 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
   // 現在の行をクリアして新しいコマンドを表示する関数
   const clearAndWriteCommand = (command: string) => {
     if (!store.isReadyForInput) return;
+    const username = store.username ?? 'nonroot';
+    const hostname = 'terminal';
     term.write('\r');
-    term.write(`\x1b[32m${store.currentDir}\x1b[0m $ `);
+    term.write(
+      `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${store.currentDir}\x1b[0m $ `
+    );
     term.write('\x1b[K');
     commandBuffer = command;
     cursorPosition = command.length;

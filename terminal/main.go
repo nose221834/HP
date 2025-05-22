@@ -32,6 +32,7 @@ type CommandResult struct {
 	Result    string `json:"result,omitempty"`    // コマンドの出力結果（エラー時は空）
 	Error     string `json:"error,omitempty"`     // エラーメッセージ（エラー時のみ）
 	Pwd       string `json:"pwd,omitempty"`       // 現在の作業ディレクトリ
+	Username  string `json:"username,omitempty"`  // 現在のユーザー名
 	SessionID string `json:"session_id,omitempty"` // セッション識別子（クライアント識別用）
 }
 
@@ -42,6 +43,7 @@ type Session struct {
 	ID            string      // セッションの一意識別子（UUID）
 	CurrentDir    string      // 現在の作業ディレクトリ（cdコマンドで変更可能）
 	PreviousDir   string      // 直前の作業ディレクトリ（cd -コマンド用）
+	Username      string      // 現在のユーザー名
 	Shell         *exec.Cmd   // 実行中のシェルプロセス（bash）
 	Stdin         *os.File    // 標準入力パイプ（コマンド入力用）
 	Stdout        *os.File    // 標準出力パイプ（コマンド出力用）
@@ -95,6 +97,13 @@ func (sm *SessionManager) createSession(sessionID string) (*Session, error) {
 		return session, nil
 	}
 
+	// 現在のユーザー名を取得
+	whoamiCmd := exec.Command("whoami")
+	username, err := whoamiCmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("whoami error: %v", err)
+	}
+
 	// 新しいbashシェルプロセスを作成
 	shell := exec.Command("bash", "-l")
 	// ターミナルエミュレーションの設定
@@ -127,6 +136,7 @@ func (sm *SessionManager) createSession(sessionID string) (*Session, error) {
 		ID:          sessionID,
 		CurrentDir:  "/home/nonroot", // デフォルトの作業ディレクトリ
 		PreviousDir: "/home/nonroot", // 初期値は現在のディレクトリと同じ
+		Username:    strings.TrimSpace(string(username)), // ユーザー名を設定
 		Shell:       shell,
 		Stdin:       stdin.(*os.File),
 		Stdout:      stdout.(*os.File),
@@ -288,6 +298,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 				Command:   cmd,
 				Result:    "",
 				Pwd:       session.CurrentDir,
+				Username:  session.Username,  // ユーザー名を結果に含める
 				SessionID: sessionID,
 			}, nil
 		}
@@ -300,6 +311,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 					Command:   cmd,
 					Error:     "直前のディレクトリがありません",
 					Pwd:       session.CurrentDir,
+					Username:  session.Username,  // ユーザー名を結果に含める
 					SessionID: sessionID,
 				}, nil
 			}
@@ -310,6 +322,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 				Command:   cmd,
 				Result:    "",
 				Pwd:       session.CurrentDir,
+				Username:  session.Username,  // ユーザー名を結果に含める
 				SessionID: sessionID,
 			}, nil
 		}
@@ -329,6 +342,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 				Command:   cmd,
 				Error:     fmt.Sprintf("ディレクトリが存在しません: %s", newDir),
 				Pwd:       session.CurrentDir,
+				Username:  session.Username,  // ユーザー名を結果に含める
 				SessionID: sessionID,
 			}, nil
 		}
@@ -341,6 +355,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 			Command:   cmd,
 			Result:    "",
 			Pwd:       session.CurrentDir,
+			Username:  session.Username,  // ユーザー名を結果に含める
 			SessionID: sessionID,
 		}, nil
 	}
@@ -360,6 +375,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 			Error:     fmt.Sprintf("コマンド実行エラー: %v", err),
 			Result:    outputStr,
 			Pwd:       session.CurrentDir,
+			Username:  session.Username,  // ユーザー名を結果に含める
 			SessionID: sessionID,
 		}, nil
 	}
@@ -370,6 +386,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 		Command:   cmd,
 		Result:    outputStr,
 		Pwd:       session.CurrentDir,
+		Username:  session.Username,  // ユーザー名を結果に含める
 		SessionID: sessionID,
 	}
 	log.Printf("コマンド実行成功: %+v", result)

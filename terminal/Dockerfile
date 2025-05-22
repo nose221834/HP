@@ -23,7 +23,8 @@ RUN mkdir /bb \
     && cd /bb \
     && ln -s busybox ls \
     && ln -s busybox cat \
-    && ln -s busybox clear
+    && ln -s busybox clear \
+    && ln -s busybox whoami
 
 # 2) Go バイナリビルダー
 FROM golang:1.21 AS go-builder
@@ -83,6 +84,7 @@ COPY --from=base-builder /bash-5.2/bash   /bin/sh
 COPY --from=base-builder /bb/ls       /bin/ls
 COPY --from=base-builder /bb/cat      /bin/cat
 COPY --from=base-builder /bb/clear    /bin/clear
+COPY --from=base-builder /bb/whoami   /bin/whoami
 
 # Goのバイナリを/binに配置
 COPY --from=go-builder /cli/bin/help /bin/help
