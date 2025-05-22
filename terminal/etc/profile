@@ -1,18 +1,17 @@
 # /etc/profile: system-wide .profile file for the Bourne shell (sh(1))
 # and Bourne compatible shells (bash(1), ksh(1), ash(1), ...).
 
-
 export PATH="/bin"
 
-if [ "${PS1-}" ]; then
-  if [ "${BASH-}" ] && [ "$BASH" != "/bin/sh" ]; then
+if [[ -n "${PS1-}" ]]; then
+  if [[ -n "${BASH-}" ]] && [[ "$BASH" != "/bin/sh" ]]; then
     # The file bash.bashrc already sets the default PS1.
     # PS1='\h:\w\$ '
-    if [ -f /etc/bash.bashrc ]; then
+    if [[ -f /etc/bash.bashrc ]]; then
       . /etc/bash.bashrc
     fi
   else
-    if [ "$(id -u)" -eq 0 ]; then
+    if [[ "$(id -u)" -eq 0 ]]; then
       PS1='# '
     else
       PS1='$ '
@@ -20,11 +19,17 @@ if [ "${PS1-}" ]; then
   fi
 fi
 
-if [ -d /etc/profile.d ]; then
+# その他のprofile.dスクリプトを読み込む（disable-builtins.shを除く）
+if [[ -d /etc/profile.d ]]; then
   for i in /etc/profile.d/*.sh; do
-    if [ -r $i ]; then
+    if [[ "$i" != "/etc/profile.d/disable-builtins.sh" ]] && [[ -r $i ]]; then
       . $i
     fi
   done
   unset i
+fi
+
+# 最後にdisable-builtins.shを読み込む
+if [[ -f /etc/profile.d/disable-builtins.sh ]]; then
+    . /etc/profile.d/disable-builtins.sh
 fi

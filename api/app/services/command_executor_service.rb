@@ -4,7 +4,7 @@
 class CommandExecutorService
   # 実行を許可するコマンドのリスト
   # セキュリティのため、実行可能なコマンドを制限
-  ALLOWED_COMMANDS = %w[ls pwd whoami date].freeze
+  ALLOWED_COMMANDS = %w[ls pwd whoami date cd].freeze
 
   # Redisのチャンネル名
   # コマンド送信用と結果受信用の2つのチャンネルを使用
@@ -25,16 +25,19 @@ class CommandExecutorService
   def execute(command)
     Rails.logger.info "コマンド実行開始: #{command}"
 
-    # Redisクライアントの初期化
-    # 環境変数から接続情報を取得（デフォルト値あり）
+    # コマンドデータからセッションIDを抽出
+    command_data = begin
+      JSON.parse(command)
+    rescue JSON::ParserError
+      { command: command, session_id: nil }
+    end
+
     redis = Redis.new(
       url: ENV.fetch("REDIS_URL", "redis://:password@redis:6379/0"),
-      timeout: 5,           # 接続タイムアウト
-      reconnect_attempts: 3 # 再接続試行回数
+      timeout: 5,
+      reconnect_attempts: 3
     )
 
-    # Redis接続のテスト
-    # 接続できない場合は早期リターン
     begin
       redis.ping
       Rails.logger.info "Redis接続テスト成功"
@@ -43,57 +46,77 @@ class CommandExecutorService
       return { status: "error", command: command, error: "Redis接続エラー: #{e.message}" }
     end
 
-    # コマンドをRedisのコマンドチャンネルに送信
-    # Goのコマンド実行サーバーがこのチャンネルを監視
-    Rails.logger.info "コマンドを送信: #{command}"
-    redis.publish(COMMAND_CHANNEL, command)
-    Rails.logger.info "コマンド送信完了"
+    # コマンドをJSON形式で送信（クライアントのセッションIDを維持）
+    command_json = {
+      command: command_data["command"] || command,
+      session_id: command_data["session_id"]
+    }.to_json
 
-    # 結果を待機
-    # Redisの結果チャンネルを購読し、タイムアウトまで待機
-    Rails.logger.info "結果を待機中...（タイムアウト: #{TIMEOUT_SECONDS}秒）"
-    result = nil
+    # 結果を待機するためのキューを作成
+    result_queue = Queue.new
+    subscription_active = true
     start_time = Time.now
 
-    begin
-      # Redisの結果チャンネルを購読
-      # ブロッキングモードで結果を待機
-      redis.subscribe(RESULT_CHANNEL) do |on|
-        # メッセージを受信した時の処理
-        on.message do |channel, message|
-          Rails.logger.info "結果を受信: #{message}"
-          begin
-            # JSONとしてパース
-            result = JSON.parse(message)
-            Rails.logger.info "結果をパース: #{result.inspect}"
-            redis.unsubscribe  # 結果を受信したら購読を解除
-          rescue JSON::ParserError => e
-            Rails.logger.error "JSONパースエラー: #{e.message}, メッセージ: #{message}"
-            result = { status: "error", command: command, error: "結果のパースに失敗: #{e.message}" }
-            redis.unsubscribe
+    # 結果を待機するスレッドを開始
+    result_thread = Thread.new do
+      begin
+        # 結果チャンネルを購読
+        redis.subscribe(RESULT_CHANNEL) do |on|
+          on.message do |channel, message|
+            next unless subscription_active
+
+            begin
+              parsed_result = JSON.parse(message)
+              Rails.logger.info "結果を受信: #{message}"
+
+              # セッションIDが一致する結果のみを処理
+              if command_data["session_id"].nil? || parsed_result["session_id"] == command_data["session_id"]
+                result_queue.push(parsed_result)
+                subscription_active = false
+                redis.unsubscribe
+              end
+            rescue JSON::ParserError => e
+              Rails.logger.error "JSONパースエラー: #{e.message}, メッセージ: #{message}"
+              if subscription_active
+                result_queue.push({ status: "error", command: command, error: "結果のパースに失敗: #{e.message}" })
+                subscription_active = false
+                redis.unsubscribe
+              end
+            end
+          end
+
+          on.subscribe do |channel, subscriptions|
+            Rails.logger.info "チャンネル購読開始: #{channel} (購読数: #{subscriptions})"
+            # 購読開始後にコマンドを送信
+            redis.publish(COMMAND_CHANNEL, command_json)
+            Rails.logger.info "コマンドを送信: #{command_json}"
+          end
+
+          on.unsubscribe do |channel, subscriptions|
+            Rails.logger.info "チャンネル購読解除: #{channel} (購読数: #{subscriptions})"
           end
         end
-
-        # チャンネル購読開始時の処理
-        on.subscribe do |channel, subscriptions|
-          Rails.logger.info "チャンネル購読開始: #{channel} (購読数: #{subscriptions})"
-        end
-
-        # チャンネル購読解除時の処理
-        on.unsubscribe do |channel, subscriptions|
-          Rails.logger.info "チャンネル購読解除: #{channel} (購読数: #{subscriptions})"
-        end
+      rescue => e
+        Rails.logger.error "Redis購読エラー: #{e.message}"
+        result_queue.push({ status: "error", command: command, error: "Redis購読エラー: #{e.message}" })
+      ensure
+        subscription_active = false
       end
-    rescue => e
-      Rails.logger.error "Redis購読エラー: #{e.message}"
-      return { status: "error", command: command, error: "Redis購読エラー: #{e.message}" }
-    ensure
-      # 処理時間を記録
-      elapsed_time = Time.now - start_time
-      Rails.logger.info "処理時間: #{elapsed_time}秒"
     end
 
-    # タイムアウトチェックと結果の返却
+    # タイムアウトまで待機
+    begin
+      result = result_queue.pop(timeout: TIMEOUT_SECONDS)
+    rescue ThreadError
+      result = nil
+    end
+
+    # スレッドの終了を待機
+    result_thread.join(0.1)
+
+    elapsed_time = Time.now - start_time
+    Rails.logger.info "処理時間: #{elapsed_time}秒"
+
     if result.nil?
       Rails.logger.error "コマンド実行タイムアウト（#{elapsed_time}秒経過）"
       { status: "error", command: command, error: "コマンド実行タイムアウト（#{elapsed_time}秒経過）" }

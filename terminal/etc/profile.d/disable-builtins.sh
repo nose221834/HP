@@ -1,13 +1,21 @@
-enable -n .
-enable -n :
-enable -n [
-# enable -n alias
+# 基本的なシェル操作に必要なコマンドを有効化（最初に実行）
+enable .  # sourceコマンドとして必要
+enable :  # 基本的なシェル構文
+enable [  # testコマンドとして必要
+enable alias  # エイリアス設定に必要
+enable cd  # ディレクトリ移動に必要
+enable -n echo  # 出力に必要
+enable -n exit  # シェル終了に必要
+enable export  # 環境変数設定に必要
+enable pwd  # 現在のディレクトリ表示に必要
+enable times  # 基本的なシェル機能
+
+# 危険なコマンドを無効化
 enable -n bg
 enable -n bind
 enable -n break
 enable -n builtin
 enable -n caller
-# enable -n cd
 enable -n command
 enable -n compgen
 enable -n complete
@@ -16,11 +24,8 @@ enable -n continue
 enable -n declare
 enable -n dirs
 enable -n disown
-enable -n echo
 enable -n eval
 enable -n exec
-# enable -n exit
-# enable -n export
 enable -n false
 enable -n fc
 enable -n fg
@@ -37,7 +42,6 @@ enable -n mapfile
 enable -n popd
 enable -n printf
 enable -n pushd
-# enable -n pwd
 enable -n read
 enable -n readarray
 enable -n readonly
@@ -48,7 +52,6 @@ enable -n shopt
 enable -n source
 enable -n suspend
 enable -n test
-# enable -n times
 enable -n trap
 enable -n true
 enable -n type
@@ -58,7 +61,17 @@ enable -n umask
 enable -n unalias
 enable -n wait
 
-# 必ず最後に実行する
+# 最後にenableコマンド自体を無効化
 enable -n enable
 
-# 許可してあるコマンド：exit,times,pwd,exoprt,alias,cd
+# 許可されているコマンド：
+# - . (source): スクリプトの読み込みに必要
+# - : (コロン): 基本的なシェル構文
+# - [ (test): 条件テストに必要
+# - alias: コマンドのエイリアス設定
+# - cd: ディレクトリ移動
+# - echo: 出力表示
+# - exit: シェル終了
+# - export: 環境変数設定
+# - pwd: 現在のディレクトリ表示
+# - times: 基本的なシェル機能

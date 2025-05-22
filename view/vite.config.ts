@@ -1,11 +1,9 @@
 import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react-swc';
 import { defineConfig } from 'vite';
+import solid from 'vite-plugin-solid';
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  // TODO: 本番環境では、vite.config.tsを変更する必要がある
+  plugins: [solid(), tailwindcss()],
   server: {
     host: '0.0.0.0',
     port: 3000,
