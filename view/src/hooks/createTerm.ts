@@ -64,7 +64,6 @@ function createWebSocketManager(
 
   const writePrompt = () => {
     if (!currentState().isReadyForInput) return;
-    term.write('\r\n');
     term.write(`\x1b[32m${currentState().currentDir}\x1b[0m $ `);
   };
 
@@ -77,9 +76,9 @@ function createWebSocketManager(
       }
 
       if ('error' in data.message && typeof data.message.error === 'string') {
-        term.writeln(`\x1b[31m❌ エラー: ${data.message.error}\x1b[0m`);
+        term.write(`\x1b[31m❌ エラー: ${data.message.error}\x1b[0m\r\n`);
         if (data.message.result?.trim()) {
-          term.writeln(data.message.result);
+          term.write(data.message.result + '\r\n');
         }
       } else if (data.message.result?.trim()) {
         // lsコマンドの出力を特別に処理
@@ -101,14 +100,14 @@ function createWebSocketManager(
               .slice(i, i + itemsPerLine)
               .map((item) => item.padEnd(effectiveItemWidth))
               .join('');
-            term.writeln(line);
+            term.write(line + '\r\n');
           }
         } else {
-          term.writeln(data.message.result);
+          term.write(data.message.result + '\r\n');
         }
       }
     } else {
-      term.writeln(String(data.message));
+      term.write(String(data.message) + '\r\n');
     }
 
     updateState({ isProcessingCommand: false });
@@ -339,7 +338,6 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
   // プロンプトを表示する関数
   const writePrompt = () => {
     if (!store.isReadyForInput) return;
-    term.write('\r\n');
     term.write(`\x1b[32m${store.currentDir}\x1b[0m $ `);
     commandBuffer = '';
     cursorPosition = 0;
@@ -414,10 +412,11 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
 
       // Enterキーの処理
       if (domEvent.code === 'Enter') {
-        term.write('\r\n');
         if (commandBuffer.trim()) {
+          term.write('\r\n');
           executeCommand(commandBuffer);
         } else {
+          term.write('\r\n');
           writePrompt();
         }
         return;
