@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -20,7 +21,7 @@ var (
 	redisHost string 	// Redisサーバのホスト名
 	redisPort string 	// Redisサーバのポート番号
 	redisPass string	// Redisサーバのパスワード
-	redisDB   int 		// RedisサーバのDB番号
+	redisDB   string 	// RedisサーバのDB番号
 )
 
 
@@ -28,7 +29,7 @@ var (
 // この関数はmainよりも前に実行される
 func init() {
 	if redisHost == "" {
-		redisHost = "localhost"
+		redisHost = "redis"
 	}
 	if redisPort == "" {
 		redisPort = "6379"
@@ -36,19 +37,26 @@ func init() {
 	if redisPass == "" {
 		redisPass = "password"
 	}
-	if redisDB == 0 {
+	if redisDB == "" {
 		// デフォルトのDB番号を指定
-		redisDB = 0
+		redisDB = "0"
 	}
 }
 
 func setupRedisPubSub(ctx context.Context, commandChannel string) (<-chan *redis.Message, *redis.Client) {
+	// redisDB（string）を int に変換
+	dbNum, err := strconv.Atoi(redisDB)
+	if err != nil {
+		log.Fatalf("REDIS_DB の変換に失敗しました: %v", err)
+	}
+
 	// Redisクライアントの設定
 	redisOpts := &redis.Options{
-		Addr:     redisHost + ":" + redisPort, 		// Redisサーバのアドレス
-		Password: redisPass, 						// パスワードなし
-		DB:       redisDB,   						// デフォルトDB
+		Addr:     redisHost + ":" + redisPort, // Redisサーバのアドレス
+		Password: redisPass,                   // パスワード
+		DB:       dbNum,                       // DB番号（int型）
 	}
+
 
 	log.Printf("Redis接続設定: %+v", redisOpts)
 

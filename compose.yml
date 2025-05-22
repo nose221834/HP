@@ -70,6 +70,11 @@ services:
     build:
       context: ./terminal
       dockerfile: Dockerfile
+      args:
+        - REDIS_HOST=${REDIS_HOST}
+        - REDIS_PORT=${REDIS_PORT}
+        - REDIS_PASSWORD=${REDIS_PASSWORD}
+        - REDIS_DB=${REDIS_DB}
     depends_on:
       - redis
 

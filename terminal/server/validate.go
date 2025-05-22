@@ -20,11 +20,6 @@ func valivatePayload(payload *Payload) error {
 }
 
 func validateCommandResult(result *CommandResult) error {
-	// コマンドの実行結果が空の場合はエラー
-	if result.Result == "" && result.Error == "" {
-		return fmt.Errorf("コマンドの実行結果が空です")
-	}
-
 	// セッションIDが空の場合はエラー
 	if result.SessionID == "" {
 		return fmt.Errorf("セッションIDが空です")
