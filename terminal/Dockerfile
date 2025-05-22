@@ -49,12 +49,24 @@ COPY ./etc /etc
 COPY ./etc /tmp
 COPY ./nonroot/ /home/nonroot/
 
-# パーミッションと所有権の設
+# パーミッションと所有権の設定
 RUN mkdir -p /tmp/profile.d && \
-    chown -R nonroot:nonroot /tmp && \
-    chmod -R 755 /home/nonroot && \
-    chmod -R 644 /tmp && \
-    chown -R root:root /tmp
+    chown -R nonroot:nonroot /home/nonroot && \
+    chmod 755 /home/nonroot && \
+    # /tmp以下のファイルの権限設定（nonrootユーザーに読み取り権限を付与）
+    find /tmp -type f -exec chmod 644 {} \; && \
+    find /tmp -type d -exec chmod 755 {} \; && \
+    # profile.dディレクトリとスクリプトの権限設定
+    # ディレクトリ自体はroot所有のまま、実行権限を付与
+    chmod 755 /tmp/profile.d && \
+    # profile.d内のスクリプトファイルに実行権限を付与（所有者はrootのまま）
+    find /tmp/profile.d -type f -name "*.sh" -exec chmod 755 {} \; && \
+    # /tmpディレクトリの所有権はrootのまま維持
+    chown -R root:root /tmp && \
+    # グループとその他のユーザーに読み取り権限を付与
+    chmod -R g+r,o+r /tmp && \
+    # profile.dディレクトリとその中のファイルに実行権限を付与（書き込み権限は付与しない）
+    chmod -R g+x,o+x /tmp/profile.d
 
 # 4) 最終イメージ
 FROM gcr.io/distroless/static-debian11:nonroot

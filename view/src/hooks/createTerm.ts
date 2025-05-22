@@ -85,22 +85,29 @@ function createWebSocketManager(
         const command = data.message.command ?? '';
         if (typeof command === 'string' && command.trim().startsWith('ls')) {
           const items = data.message.result.split('\n').filter(Boolean);
-          // ターミナルの幅に合わせて表示を調整
-          const width = term.cols;
-          // 項目間のスペースを調整（最大項目長 + 1文字のスペース）
-          const maxItemLength =
-            Math.max(...items.map((item) => item.length)) + 1;
-          // 最小幅を設定して、1行に表示する項目数を制限
-          const minItemWidth = 12; // 最小幅を12文字に設定
-          const effectiveItemWidth = Math.max(maxItemLength, minItemWidth);
-          const itemsPerLine = Math.floor(width / effectiveItemWidth);
 
-          for (let i = 0; i < items.length; i += itemsPerLine) {
-            const line = items
-              .slice(i, i + itemsPerLine)
-              .map((item) => item.padEnd(effectiveItemWidth))
-              .join('');
-            term.write(line + '\r\n');
+          // ls -l または ls -la の場合、詳細表示モードで処理
+          if (command.includes('-l')) {
+            // 各行を個別に表示
+            for (const line of items) {
+              term.write(line + '\r\n');
+            }
+          } else {
+            // 通常のls表示（ターミナルの幅に合わせて表示を調整）
+            const width = term.cols;
+            const maxItemLength =
+              Math.max(...items.map((item) => item.length)) + 1;
+            const minItemWidth = 12;
+            const effectiveItemWidth = Math.max(maxItemLength, minItemWidth);
+            const itemsPerLine = Math.floor(width / effectiveItemWidth);
+
+            for (let i = 0; i < items.length; i += itemsPerLine) {
+              const line = items
+                .slice(i, i + itemsPerLine)
+                .map((item) => item.padEnd(effectiveItemWidth))
+                .join('');
+              term.write(line + '\r\n');
+            }
           }
         } else {
           term.write(data.message.result + '\r\n');

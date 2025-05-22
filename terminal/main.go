@@ -96,7 +96,7 @@ func (sm *SessionManager) createSession(sessionID string) (*Session, error) {
 	}
 
 	// 新しいbashシェルプロセスを作成
-	shell := exec.Command("bash")
+	shell := exec.Command("bash", "-l")
 	// ターミナルエミュレーションの設定
 	shell.Env = append(os.Environ(), "TERM=xterm-256color")
 
@@ -347,7 +347,7 @@ func executeCommand(cmd string, sessionID string) (CommandResult, error) {
 
 	// 通常のコマンド実行
 	// 現在のディレクトリでコマンドを実行
-	cmdObj := exec.Command("bash", "-c", fmt.Sprintf("cd %s && %s", session.CurrentDir, cmd))
+	cmdObj := exec.Command("bash","-l", "-c", fmt.Sprintf("cd %s && %s", session.CurrentDir, cmd))
 	output, err := cmdObj.CombinedOutput()
 	outputStr := strings.TrimSpace(string(output))
 
