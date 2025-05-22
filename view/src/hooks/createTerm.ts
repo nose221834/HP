@@ -27,7 +27,31 @@ import type {
 } from '../types/terminal';
 
 /**
- * ターミナルの状態を初期化
+ * ターミナルエミュレータの実装
+ *
+ * このファイルは、ブラウザ上で動作するターミナルエミュレータの主要な機能を実装しています。
+ * 主な機能:
+ * - WebSocketを使用したサーバーとの通信
+ * - ターミナルの状態管理
+ * - コマンド履歴の管理
+ * - キーボード入力の処理
+ * - ターミナルの表示制御
+ */
+
+/**
+ * ターミナルの初期状態を定義する関数
+ *
+ * @returns {TerminalState} 初期化されたターミナルの状態
+ *
+ * 状態には以下の情報が含まれます:
+ * - isConnected: WebSocket接続の状態
+ * - isSubscribed: ActionCableチャンネルの購読状態
+ * - isReadyForInput: コマンド入力可能な状態かどうか
+ * - currentDir: 現在のディレクトリパス
+ * - username: 現在のユーザー名
+ * - commandHistory: コマンド履歴の配列
+ * - historyIndex: コマンド履歴の現在の位置
+ * - isProcessingCommand: コマンド実行中かどうか
  */
 function createInitialState(): TerminalState {
   return TerminalStateSchema.parse({
@@ -49,7 +73,11 @@ function createWebSocketManager(
   sessionId: string,
   term: Terminal,
   setStore: (fn: (state: TerminalState) => Partial<TerminalState>) => void,
-  initialState: TerminalState
+  initialState: TerminalState,
+  _commandBuffer: () => string,
+  setCommandBuffer: (fn: (prev: string) => string) => void,
+  _cursorPosition: () => number,
+  setCursorPosition: (fn: (prev: number) => number) => void
 ) {
   const [ws, setWs] = createSignal<WebSocket | null>(null);
   const [reconnectAttempts, setReconnectAttempts] = createSignal(0);
@@ -58,11 +86,19 @@ function createWebSocketManager(
   );
   const [currentState, setCurrentState] = createSignal(initialState);
 
-  const updateState = (update: Partial<TerminalState>) => {
-    setCurrentState((prev) => ({ ...prev, ...update }));
-    setStore(() => update);
-  };
-
+  /**
+   * プロンプトを表示する関数
+   *
+   * 表示内容:
+   * - ユーザー名（緑色）
+   * - ホスト名
+   * - 現在のディレクトリ（青色）
+   * - プロンプト記号（$）
+   *
+   * 注意:
+   * - ターミナルが準備完了していない場合は表示しない
+   * - 表示後にコマンドバッファとカーソル位置をリセット
+   */
   const writePrompt = () => {
     if (!currentState().isReadyForInput) return;
     const username = currentState().username || 'nonroot';
@@ -70,8 +106,56 @@ function createWebSocketManager(
     term.write(
       `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${currentState().currentDir}\x1b[0m $ `
     );
+    setCommandBuffer(() => '');
+    setCursorPosition(() => 0);
   };
 
+  /**
+   * 現在の行をクリアして新しいコマンドを表示する関数
+   *
+   * 処理内容:
+   * 1. 現在の行をクリア
+   * 2. プロンプトを再表示
+   * 3. 新しいコマンドを表示
+   * 4. コマンドバッファとカーソル位置を更新
+   *
+   * 注意:
+   * - ターミナルが準備完了していない場合は何もしない
+   */
+  const clearAndWriteCommand = (command: string) => {
+    if (!currentState().isReadyForInput) return;
+    const username = currentState().username || 'nonroot';
+    const hostname = 'terminal';
+    term.write('\r');
+    term.write(
+      `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${currentState().currentDir}\x1b[0m $ `
+    );
+    term.write('\x1b[K');
+    setCommandBuffer(() => command);
+    setCursorPosition(() => command.length);
+    term.write(command);
+  };
+
+  const updateState = (update: Partial<TerminalState>) => {
+    setCurrentState((prev) => ({ ...prev, ...update }));
+    setStore(() => update);
+  };
+
+  /**
+   * WebSocketメッセージを処理する関数
+   *
+   * @param {WebSocketMessage} data - 受信したWebSocketメッセージ
+   *
+   * 処理内容:
+   * 1. メッセージがオブジェクトの場合:
+   *    - pwd: 現在のディレクトリを更新
+   *    - username: ユーザー名を更新
+   *    - error: エラーメッセージを表示
+   *    - result: コマンド実行結果を表示
+   *      - lsコマンドの場合は特別な表示処理を実施
+   * 2. メッセージが文字列の場合:
+   *    - そのままターミナルに表示
+   */
   const handleMessage = (data: WebSocketMessage) => {
     if (!data.message) return;
 
@@ -143,6 +227,14 @@ function createWebSocketManager(
     attemptReconnect();
   };
 
+  /**
+   * WebSocket接続の再接続を試みる関数
+   *
+   * 実装の特徴:
+   * - 指数バックオフ方式で再接続間隔を計算
+   * - 最大試行回数に達した場合は再接続を中止
+   * - ユーザーに再接続状態を通知
+   */
   const attemptReconnect = () => {
     const timeout = reconnectTimeout();
     if (timeout) {
@@ -168,6 +260,19 @@ function createWebSocketManager(
     setReconnectTimeout(newTimeout);
   };
 
+  /**
+   * WebSocketのイベントハンドラを設定する関数
+   *
+   * 処理するイベント:
+   * - onopen: 接続確立時の処理
+   * - onmessage: メッセージ受信時の処理
+   *   - ping: 無視
+   *   - welcome: ActionCable接続確立通知
+   *   - confirm_subscription: チャンネル購読確認
+   *   - message: 通常のメッセージ処理
+   * - onclose: 接続切断時の処理
+   * - onerror: エラー発生時の処理
+   */
   const setupEventHandlers = (socket: WebSocket) => {
     socket.onopen = () => {
       term.writeln('✅ 接続しました');
@@ -247,6 +352,20 @@ function createWebSocketManager(
     setupEventHandlers(socket);
   };
 
+  /**
+   * WebSocket経由でコマンドを送信する関数
+   *
+   * 処理内容:
+   * 1. コマンドのバリデーション
+   * 2. WebSocket接続の状態確認
+   * 3. コマンドの送信
+   *
+   * エラー処理:
+   * - バリデーションエラー: エラーメッセージを表示
+   * - 送信失敗: エラーメッセージを表示
+   *
+   * @returns {boolean} コマンドの送信が成功したかどうか
+   */
   const sendCommand = (command: string): boolean => {
     try {
       const validatedCommand = CommandSchema.parse({
@@ -283,6 +402,14 @@ function createWebSocketManager(
     }
   };
 
+  /**
+   * WebSocket接続を切断する関数
+   *
+   * 処理内容:
+   * 1. 再接続タイマーのクリア
+   * 2. WebSocket接続の切断
+   * 3. WebSocketインスタンスのクリア
+   */
   const disconnect = () => {
     const timeout = reconnectTimeout();
     if (timeout) {
@@ -300,16 +427,33 @@ function createWebSocketManager(
     connect,
     disconnect,
     sendCommand,
+    writePrompt,
+    clearAndWriteCommand,
   };
 }
 
 /**
  * ターミナルの初期化と状態管理を行う関数
+ *
+ * @param {HTMLDivElement} container - ターミナルを表示するDOM要素
+ * @returns {TerminalReturn} ターミナルの操作に必要な関数と状態
+ *
+ * 主な機能:
+ * - ターミナルの初期化と設定
+ * - 各種アドオンの適用（Fit, WebLinks, Search, Unicode11, WebGL）
+ * - キーボード入力の処理
+ * - コマンドの実行
+ * - 状態管理
+ * - クリーンアップ処理
  */
 export function createTerm(container: HTMLDivElement): TerminalReturn {
   // 状態管理
   const [store, setStore] = createStore<TerminalState>(createInitialState());
   const sessionId = crypto.randomUUID();
+
+  // コマンドバッファの管理
+  const [commandBuffer, setCommandBuffer] = createSignal('');
+  const [cursorPosition, setCursorPosition] = createSignal(0);
 
   // ターミナルの初期化
   const term = new Terminal(TERMINAL_OPTIONS);
@@ -348,49 +492,27 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
   term.writeln(`🔌 接続先: ${WS_URL}`);
   term.writeln(`🔑 セッションID: ${sessionId}`);
 
-  const wsManager = createWebSocketManager(sessionId, term, setStore, store);
-
-  // 現在のコマンドバッファを管理
-  let commandBuffer = '';
-  let cursorPosition = 0;
-
-  // プロンプトを表示する関数
-  const writePrompt = () => {
-    if (!store.isReadyForInput) return;
-    const username = store.username ?? 'nonroot';
-    const hostname = 'terminal';
-    term.write(
-      `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${store.currentDir}\x1b[0m $ `
-    );
-    commandBuffer = '';
-    cursorPosition = 0;
-  };
-
-  // 現在の行をクリアして新しいコマンドを表示する関数
-  const clearAndWriteCommand = (command: string) => {
-    if (!store.isReadyForInput) return;
-    const username = store.username ?? 'nonroot';
-    const hostname = 'terminal';
-    term.write('\r');
-    term.write(
-      `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${store.currentDir}\x1b[0m $ `
-    );
-    term.write('\x1b[K');
-    commandBuffer = command;
-    cursorPosition = command.length;
-    term.write(command);
-  };
+  const wsManager = createWebSocketManager(
+    sessionId,
+    term,
+    setStore,
+    store,
+    commandBuffer,
+    setCommandBuffer,
+    cursorPosition,
+    setCursorPosition
+  );
 
   // コマンドを実行する関数
   const executeCommand = (command: string) => {
     if (!command.trim()) {
-      writePrompt();
+      wsManager.writePrompt();
       return;
     }
 
     // コマンドバッファをクリア
-    commandBuffer = '';
-    cursorPosition = 0;
+    setCommandBuffer(() => '');
+    setCursorPosition(() => 0);
 
     setStore((state) => ({
       isProcessingCommand: true,
@@ -402,7 +524,7 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
 
     if (!wsManager.sendCommand(command)) {
       setStore(() => ({ isProcessingCommand: false }));
-      writePrompt();
+      wsManager.writePrompt();
     }
   };
 
@@ -410,6 +532,23 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
   wsManager.connect();
 
   // キー入力の処理
+  /**
+   * キーボード入力ハンドラー
+   *
+   * 処理するキー入力:
+   * - Tab: 無効化（デフォルトの補完機能を防止）
+   * - Ctrl+C: コマンド中断
+   * - Enter: コマンド実行
+   * - Backspace: 文字削除
+   * - 矢印キー:
+   *   - 左右: カーソル移動
+   *   - 上下: コマンド履歴の操作
+   * - その他: 通常の文字入力
+   *
+   * 制限事項:
+   * - コマンド実行中は入力を無視
+   * - ターミナルが準備完了していない場合は入力を無視
+   */
   createEffect(() => {
     const handler = ({
       key,
@@ -433,27 +572,27 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
       if (domEvent.ctrlKey && domEvent.code === 'KeyC') {
         term.write('^C\r\n');
         setStore('historyIndex', -1);
-        writePrompt();
+        wsManager.writePrompt();
         return;
       }
 
       // Enterキーの処理
       if (domEvent.code === 'Enter') {
-        if (commandBuffer.trim()) {
+        if (commandBuffer().trim()) {
           term.write('\r\n');
-          executeCommand(commandBuffer);
+          executeCommand(commandBuffer());
         } else {
           term.write('\r\n');
-          writePrompt();
+          wsManager.writePrompt();
         }
         return;
       }
 
       // Backspaceキーの処理
       if (domEvent.code === 'Backspace') {
-        if (cursorPosition > 0) {
-          commandBuffer = commandBuffer.slice(0, -1);
-          cursorPosition--;
+        if (cursorPosition() > 0) {
+          setCommandBuffer((prev) => prev.slice(0, -1));
+          setCursorPosition((prev) => prev - 1);
           term.write('\b \b');
         }
         return;
@@ -461,16 +600,16 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
 
       // 矢印キーの処理
       if (domEvent.code === 'ArrowLeft') {
-        if (cursorPosition > 0) {
-          cursorPosition--;
+        if (cursorPosition() > 0) {
+          setCursorPosition((prev) => prev - 1);
           term.write('\x1b[D');
         }
         return;
       }
 
       if (domEvent.code === 'ArrowRight') {
-        if (cursorPosition < commandBuffer.length) {
-          cursorPosition++;
+        if (cursorPosition() < commandBuffer().length) {
+          setCursorPosition((prev) => prev + 1);
           term.write('\x1b[C');
         }
         return;
@@ -483,7 +622,7 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
             store.commandHistory[
               store.commandHistory.length - 1 - store.historyIndex
             ];
-          clearAndWriteCommand(command);
+          wsManager.clearAndWriteCommand(command);
         }
         return;
       }
@@ -495,10 +634,10 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
             store.commandHistory[
               store.commandHistory.length - 1 - store.historyIndex
             ];
-          clearAndWriteCommand(command);
+          wsManager.clearAndWriteCommand(command);
         } else if (store.historyIndex === 0) {
           setStore('historyIndex', -1);
-          clearAndWriteCommand('');
+          wsManager.clearAndWriteCommand('');
         }
         return;
       }
@@ -506,8 +645,8 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
       // 通常の文字入力
       if (printable) {
         setStore('historyIndex', -1);
-        commandBuffer += key;
-        cursorPosition++;
+        setCommandBuffer((prev) => prev + key);
+        setCursorPosition((prev) => prev + 1);
         term.write(key);
       }
     };
