@@ -82,7 +82,30 @@ function createWebSocketManager(
           term.writeln(data.message.result);
         }
       } else if (data.message.result?.trim()) {
-        term.writeln(data.message.result);
+        // lsコマンドの出力を特別に処理
+        const command = data.message.command ?? '';
+        if (typeof command === 'string' && command.trim().startsWith('ls')) {
+          const items = data.message.result.split('\n').filter(Boolean);
+          // ターミナルの幅に合わせて表示を調整
+          const width = term.cols;
+          // 項目間のスペースを調整（最大項目長 + 1文字のスペース）
+          const maxItemLength =
+            Math.max(...items.map((item) => item.length)) + 1;
+          // 最小幅を設定して、1行に表示する項目数を制限
+          const minItemWidth = 12; // 最小幅を12文字に設定
+          const effectiveItemWidth = Math.max(maxItemLength, minItemWidth);
+          const itemsPerLine = Math.floor(width / effectiveItemWidth);
+
+          for (let i = 0; i < items.length; i += itemsPerLine) {
+            const line = items
+              .slice(i, i + itemsPerLine)
+              .map((item) => item.padEnd(effectiveItemWidth))
+              .join('');
+            term.writeln(line);
+          }
+        } else {
+          term.writeln(data.message.result);
+        }
       }
     } else {
       term.writeln(String(data.message));
@@ -339,6 +362,10 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
       writePrompt();
       return;
     }
+
+    // コマンドバッファをクリア
+    commandBuffer = '';
+    cursorPosition = 0;
 
     setStore((state) => ({
       isProcessingCommand: true,

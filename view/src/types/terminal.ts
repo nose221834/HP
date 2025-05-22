@@ -10,6 +10,7 @@ export const WebSocketMessageSchema = z.object({
         result: z.string().optional(),
         error: z.string().optional(),
         pwd: z.string().optional(),
+        command: z.string().optional(),
       }),
       z.string(),
       z.number(),
