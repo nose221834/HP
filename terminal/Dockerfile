@@ -39,8 +39,27 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/terminal
 
 RUN go build -o /cli/bin/help ./help/main.go
 
-# 3) 最終イメージ
+# 3) パーミッション設定用の一時的なステージ
+FROM debian:bullseye-slim AS permission-setter
+
+# chownに必要なファイルをetcに配置
+COPY ./etc /etc
+
+# 必要なファイルをコピー
+COPY ./etc /tmp
+COPY ./nonroot/ /home/nonroot/
+
+# パーミッションと所有権の設
+RUN mkdir -p /tmp/profile.d && \
+    chown -R nonroot:nonroot /tmp && \
+    chmod -R 755 /home/nonroot && \
+    chmod -R 644 /tmp && \
+    chown -R root:root /tmp
+
+# 4) 最終イメージ
 FROM gcr.io/distroless/static-debian11:nonroot
+
+USER nonroot
 
 # bashのバイナリを/binに配置
 COPY --from=base-builder /bash-5.2/bash /bin/bash
@@ -57,10 +76,11 @@ COPY --from=base-builder /bb/clear    /bin/clear
 COPY --from=go-builder /cli/bin/help /bin/help
 COPY --from=go-builder /app/terminal /usr/local/bin/terminal
 
-# groupとpasswdをコピー
-COPY ./etc /etc
-COPY ./nonroot/ /home/nonroot/
+# etcに配置するファイルをコピー
+COPY --from=permission-setter /tmp /etc
 
+# ユーザ以下のファイルを追加
+COPY --from=permission-setter /home/nonroot/ /home/nonroot/
 
 # アプリケーションの起動
 CMD ["terminal"]
