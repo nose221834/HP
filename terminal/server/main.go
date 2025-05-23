@@ -4,11 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
-	// "encoding/json"
-	// "fmt"
 	"log"
-	// "github.com/google/uuid"
 )
 
 // 定数を定義
@@ -16,8 +12,6 @@ const (
 	commandChannel = "terminal:commands"	// コマンド受信用チャンネル
 	resultChannel  = "terminal:results"	// 結果送信用チャンネル
 )
-
-
 
 // main はアプリケーションのエントリーポイント
 // Redisとの接続確立とコマンド処理ループを開始
