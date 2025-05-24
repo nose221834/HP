@@ -54,6 +54,24 @@ func executeCD(session *Session, parts []string,sessionID string,cmd string) (Co
 		}, nil
 	}
 
+	// cd ~ の特別処理
+	if strings.HasPrefix(parts[1], "~") {
+		// ユーザーのホームディレクトリに移動
+		homeDir := os.Getenv("HOME")
+		if homeDir == "" {
+			return CommandResult{
+				Status:    "error",
+				Command:   cmd,
+				Error:     "ホームディレクトリが取得できません",
+				Pwd:       session.CurrentDir,
+				Username:  session.Username,  // ユーザー名を結果に含める
+				SessionID: sessionID,
+			}, nil
+		}
+		// ~をホームディレクトリに置き換え
+		parts[1] = strings.Replace(parts[1], "~", homeDir, 1)
+	}
+
 	// 通常のcdコマンド処理
 	// 相対パスの場合は現在のディレクトリからの相対パスに変換
 	if !strings.HasPrefix(parts[1], "/") {
