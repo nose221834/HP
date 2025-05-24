@@ -2,18 +2,32 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"unicode/utf8"
 )
 
-func valivatePayload(payload *Payload) error {
+
+func valivateCommand(cmd string) error {
+	// ブラックリストに含まれるコマンドを定義
+	var BlacklistMap = map[string]struct{}{
+		"rm":       {},
+		"shutdown": {},
+	}
+
+	// 空白で分割（例: "rm -rf /tmp" → ["rm", "-rf", "/tmp"]）
+	parts := strings.Fields(cmd)
+
 	// コマンドが空の場合はエラー
-	if payload.Command == "" {
+	if cmd == "" {
 		return fmt.Errorf("コマンドが空です")
 	}
 
+	// 最初の要素だけを見る（実行されるコマンド名）
+	baseCmd := parts[0]
+
 	// ブラックリストに含まれるコマンドをチェック
-	if _, exists := BlacklistMap[payload.Command]; exists {
-		return fmt.Errorf("このコマンドは実行できません: %s", payload.Command)
+	if _, exists := BlacklistMap[baseCmd]; exists {
+		return fmt.Errorf("このコマンドは実行できません: %s", baseCmd)
 	}
 
 	return nil

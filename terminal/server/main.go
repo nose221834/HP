@@ -38,6 +38,18 @@ func main() {
 			continue
 		}
 
+		// コマンドのバリデーション
+		if err := valivateCommand(payload.Command); err != nil {
+			log.Printf("コマンドバリデーションエラー: %v", err)
+			// result := CommandResult{
+			// 	Status:    "error",
+			// 	Command:   payload.Command,
+			// 	Error:     fmt.Sprintf("バリデーションエラー: %v", err),
+			// 	SessionID: payload.SessionID,
+			// }
+			continue
+		}
+
 		// コマンドを実行し、結果を取得
 		result, err := executeCommand(payload.Command, payload.SessionID)
 		if err != nil {
