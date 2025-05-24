@@ -1,0 +1,57 @@
+name: CI-terminal
+
+on:
+  pull_request:
+    paths:
+        - 'terminal/**'
+        - '.github/workflows/ci-terminal.yml'
+
+jobs:
+  check-security-for-Trivy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # GitHubリポジトリのコードをチェックアウト
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      # Trivyをインストール
+      - name: Install Trivy
+        run: |
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.39.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.39.0_Linux-64bit.deb
+
+      # Docker Buildxのセットアップ
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3 # 永続ビルダー設定
+        with:
+          install: true
+          buildkitd-flags: --debug
+
+      # dockerをbuild
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: terminal
+          file: terminal/Dockerfile
+          platforms: linux/amd64
+          # buildが遅すぎるので、arm64は一旦コメントアウト
+          # platforms: linux/arm64,linux/amd64
+          pull: true # 常に最新イメージ取得
+          tags: |
+            hp-terminal:latest
+
+      # Trivyでセキュリティスキャン
+      - name: Scan Docker image with Trivy
+        run: |
+          trivy image --exit-code 1 --severity HIGH,CRITICAL hp-terminal:latest
+
+      # Docker Buildxのキャッシュをプルーニング
+      - name: Prune Buildx builder and caches
+        if: always()
+        run: |
+          docker buildx prune --all --force
