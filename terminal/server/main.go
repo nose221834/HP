@@ -34,6 +34,7 @@ func main() {
 		payload, err := parsePayload(msg.Payload)
 		if err != nil {
 			log.Printf("パース失敗: %v", err)
+			// TODO: パースに失敗した場合、sessionIDを取得することができない→resultを出しても、APIが受け取れるかわからない
 			continue
 		}
 
