@@ -27,7 +27,7 @@ RUN mkdir /bb \
     && ln -s busybox whoami
 
 # 2) Go バイナリビルダー
-FROM golang:1.21 AS go-builder
+FROM golang:1.23.1 AS go-builder
 # 作業ディレクトリを server に設定
 WORKDIR /app/server
 
