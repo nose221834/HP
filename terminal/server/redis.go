@@ -11,11 +11,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// 定数を定義
-const (
-	maxRetries = 5	// Redis接続の最大リトライ回数
-)
-
 // Redisのクライアント設定をbuild時に指定するための変数
 // TODO: 以下のように指定してbuildする
 // go build -ldflags "-X main.redisHost=localhost -X main.redisPort=6379" -o myapp main.go
@@ -46,6 +41,11 @@ func init() {
 }
 
 func setupRedisPubSub(ctx context.Context, commandChannel string) (<-chan *redis.Message, *redis.Client) {
+	// 定数を定義
+	const (
+		maxRetries = 5	// Redis接続の最大リトライ回数
+	)
+
 	// redisDB（string）を int に変換
 	dbNum, err := strconv.Atoi(redisDB)
 	if err != nil {
