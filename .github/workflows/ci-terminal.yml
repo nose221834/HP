@@ -28,8 +28,8 @@ jobs:
       # dockerをbuild
       - name: Build and push Docker image
         run: |
-          docker build \
-          --pull \
+          docker buildx build \
+          --load \
           --platform linux/amd64 \
           -f terminal/Dockerfile \
           -t hp-terminal:${{ github.sha }} \
