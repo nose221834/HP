@@ -81,7 +81,20 @@ func executeCD(session *Session, parts []string,sessionID string,cmd string) (Co
 	newDir := filepath.Clean(parts[1])
 
 	// ディレクトリの存在確認
-	if _, err := os.Stat(newDir); os.IsNotExist(err) {
+	fileInfo, err := os.Stat(newDir)
+	if err != nil {
+		return CommandResult{
+			Status:    "error",
+			Command:   cmd,
+			Error:     fmt.Sprintf("ディレクトリが存在しません: %s", newDir),
+			Pwd:       session.CurrentDir,
+			Username:  session.Username,  // ユーザー名を結果に含める
+			SessionID: sessionID,
+		}, nil
+	}
+
+	// 入手した情報がディレクトリかどうかを確認
+	if !fileInfo.IsDir() {
 		return CommandResult{
 			Status:    "error",
 			Command:   cmd,
