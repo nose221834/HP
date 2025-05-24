@@ -27,18 +27,43 @@ RUN mkdir /bb \
     && ln -s busybox whoami
 
 # 2) Go バイナリビルダー
-FROM golang:1.21 AS go-builder
-WORKDIR /app
+FROM golang:1.23.1 AS go-builder
+# 作業ディレクトリを server に設定
+WORKDIR /app/server
 
-# Goモジュールの初期化と依存関係のインストール
-COPY go.mod go.sum ./
+# Goモジュールファイルをコピーして依存関係を取得
+COPY server/go.mod server/go.sum ./
 RUN go mod download
 
-# ソースコードのコピーとビルド
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/terminal
+# ソースコード全体を server ディレクトリにコピー
+COPY server/. .
 
-RUN go build -o /cli/bin/help ./help/main.go
+# ビルド引数の定義とデフォルト値
+ARG REDIS_HOST=redis
+ARG REDIS_PORT=6379
+ARG REDIS_PASSWORD=password
+ARG REDIS_DB=0
+
+# 実行時環境変数（任意で使用）
+ENV REDIS_HOST=${REDIS_HOST} \
+    REDIS_PORT=${REDIS_PORT} \
+    REDIS_PASSWORD=${REDIS_PASSWORD} \
+    REDIS_DB=${REDIS_DB}
+
+# terminal バイナリのビルド
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags "\
+    -X main.redisHost=$REDIS_HOST \
+    -X main.redisPort=$REDIS_PORT \
+    -X main.redisPass=$REDIS_PASSWORD \
+    -X main.redisDB=$REDIS_DB" \
+    -o /app/terminal .
+
+# help バイナリのビルド（helpディレクトリがある前提）
+WORKDIR /app/help
+COPY help/. .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -o /cli/bin/help main.go
 
 # 3) パーミッション設定用の一時的なステージ
 FROM debian:bullseye-slim AS permission-setter

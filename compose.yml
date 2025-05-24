@@ -70,6 +70,12 @@ services:
     build:
       context: ./terminal
       dockerfile: Dockerfile
+      args:
+        - REDIS_HOST=${REDIS_HOST}
+        - REDIS_PORT=${REDIS_PORT}
+        - REDIS_PASSWORD=${REDIS_PASSWORD}
+        - REDIS_DB=${REDIS_DB}
+    read_only: true  # ここでファイルシステムを読み取り専用に設定
     depends_on:
       - redis
 
