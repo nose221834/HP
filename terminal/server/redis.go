@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -91,4 +93,25 @@ func setupRedisPubSub(ctx context.Context, commandChannel string) (<-chan *redis
 	ch := pubsub.Channel()
 
 	return ch, rdb
+}
+
+// publishResult はコマンドの実行結果をRedisにパブリッシュする関数
+// 引数にはコンテキスト、Redisクライアント、コマンドの実行結果を受け取る
+func publishResult(ctx context.Context,rdb *redis.Client, result *CommandResult) error {
+	// コマンドの実行結果をJSON形式に変換
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("JSON変換エラー: %w", err)
+	}
+
+	// Redisの結果チャンネルに送信
+	log.Printf("結果を送信: %s", string(resultJSON))
+	err = rdb.Publish(ctx, resultChannel, string(resultJSON)).Err()
+	if err != nil {
+		log.Printf("結果送信エラー: %v", err)
+	} else {
+		log.Println("結果送信完了")
+	}
+
+	return nil
 }

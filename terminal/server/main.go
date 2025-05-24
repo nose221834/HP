@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 )
@@ -41,12 +40,16 @@ func main() {
 		// コマンドのバリデーション
 		if err := valivateCommand(payload.Command); err != nil {
 			log.Printf("コマンドバリデーションエラー: %v", err)
-			// result := CommandResult{
-			// 	Status:    "error",
-			// 	Command:   payload.Command,
-			// 	Error:     fmt.Sprintf("バリデーションエラー: %v", err),
-			// 	SessionID: payload.SessionID,
-			// }
+			result := CommandResult{
+				Status:    "error",
+				Command:   payload.Command,
+				Error:     fmt.Sprintf("バリデーションエラー: %v", err),
+				SessionID: payload.SessionID,
+			}
+			// 結果をRedisの結果チャンネルに送信
+			if err := publishResult(ctx, rdb, &result); err != nil {
+				log.Printf("結果のパブリッシュエラー: %v", err)
+			}
 			continue
 		}
 
@@ -60,6 +63,10 @@ func main() {
 				Error:     fmt.Sprintf("実行エラー: %v", err),
 				SessionID: payload.SessionID,
 			}
+			if err := publishResult(ctx, rdb, &result); err != nil {
+				log.Printf("結果のパブリッシュエラー: %v", err)
+			}
+			continue
 		}
 
 		// コマンドの実行結果をバリデーション
@@ -71,22 +78,17 @@ func main() {
 				Error:     fmt.Sprintf("バリデーションエラー: %v", err),
 				SessionID: payload.SessionID,
 			}
-		}
-
-		// 結果をJSONに変換
-		jsonResult, err := json.Marshal(result)
-		if err != nil {
-			log.Printf("JSON変換エラー: %v", err)
+			// 結果をRedisの結果チャンネルに送信
+			if err := publishResult(ctx, rdb, &result); err != nil {
+				log.Printf("結果のパブリッシュエラー: %v", err)
+			}
 			continue
 		}
 
 		// 結果をRedisの結果チャンネルに送信
-		log.Printf("結果を送信: %s", string(jsonResult))
-		err = rdb.Publish(ctx, resultChannel, string(jsonResult)).Err()
-		if err != nil {
-			log.Printf("結果送信エラー: %v", err)
-		} else {
-			log.Println("結果送信完了")
+		if err := publishResult(ctx, rdb, &result); err != nil {
+			log.Printf("結果のパブリッシュエラー: %v", err)
+			continue
 		}
 	}
 }
