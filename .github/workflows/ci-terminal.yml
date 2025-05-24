@@ -18,13 +18,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # Trivyをインストール
-      - name: Install Trivy
-        run: |
-          sudo apt-get install -y wget
-          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.39.0_Linux-64bit.deb
-          sudo dpkg -i trivy_0.39.0_Linux-64bit.deb
-
       # Docker Buildxのセットアップ
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3 # 永続ビルダー設定
@@ -43,15 +36,22 @@ jobs:
           # platforms: linux/arm64,linux/amd64
           pull: true # 常に最新イメージ取得
           tags: |
-            hp-terminal:latest
-
-      # Trivyでセキュリティスキャン
-      - name: Scan Docker image with Trivy
-        run: |
-          trivy image --exit-code 1 --severity HIGH,CRITICAL hp-terminal:latest
+            hp-terminal:${{ github.sha }}
 
       # Docker Buildxのキャッシュをプルーニング
       - name: Prune Buildx builder and caches
         if: always()
         run: |
           docker buildx prune --all --force
+
+
+      # Trivyでイメージのセキュリティチェック
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'hp-terminal:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
