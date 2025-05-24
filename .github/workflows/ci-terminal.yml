@@ -27,16 +27,13 @@ jobs:
 
       # dockerをbuild
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: terminal
-          file: terminal/Dockerfile
-          platforms: linux/amd64
-          # buildが遅すぎるので、arm64は一旦コメントアウト
-          # platforms: linux/arm64,linux/amd64
-          pull: true # 常に最新イメージ取得
-          tags: |
-            hp-terminal:${{ github.sha }}
+        run: |
+          docker build \
+          --pull \
+          --platform linux/amd64 \
+          -f terminal/Dockerfile \
+          -t hp-terminal:${{ github.sha }} \
+          terminal
 
       # Docker Buildxのキャッシュをプルーニング
       - name: Prune Buildx builder and caches
