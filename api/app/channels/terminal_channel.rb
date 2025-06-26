@@ -1,5 +1,4 @@
 class TerminalChannel < ApplicationCable::Channel
-
     # クライアントがチャンネルに接続したとき（websocketのリクエストを送ったとき？）に呼ばれる
     def subscribed
         # connection.connection_identifier →connection.rbで定義されている
@@ -56,7 +55,7 @@ class TerminalChannel < ApplicationCable::Channel
         end
 
         # 危険なコマンドのチェック
-        dangerous_commands = ["rm", "touch", "sudo", "su", "chmod", "chown"]
+        dangerous_commands = [ "rm", "touch", "sudo", "su", "chmod", "chown" ]
         if dangerous_commands.any? { |cmd| command.include?(cmd) }
             return { error: "Dangerous command detected: #{command}" }
         end
@@ -79,4 +78,3 @@ class TerminalChannel < ApplicationCable::Channel
         )
     end
 end
-

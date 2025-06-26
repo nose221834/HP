@@ -95,13 +95,13 @@ class TerminalExecutorService
     begin
       result = result_queue.pop(timeout: TIMEOUT_SECONDS)
       Rails.logger.info "コマンド実行完了: #{result}"
-      return result
+      result
     rescue ThreadError
       # タイムアウトした場合
       Rails.logger.error "コマンド実行タイムアウト: #{command_data["command"]}"
       subscription_active = false
       RedisSubscriber.unsubscribe if RedisSubscriber.connected?
-      return self.class.error_response("Command execution timeout")
+      self.class.error_response("Command execution timeout")
     ensure
       # スレッドをクリーンアップ
       result_thread.kill if result_thread.alive?
