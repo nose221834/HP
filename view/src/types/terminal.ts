@@ -60,7 +60,7 @@ export const WS_HOST =
   typeof window !== 'undefined' && window.location.hostname === 'localhost'
     ? 'localhost'
     : '192.168.97.1';
-export const WS_URL = `ws://${WS_HOST}:8000/api/v1/cable`;
+export const WS_URL = `ws://${WS_HOST}:8000/api/v1/ws/terminal`;
 
 // ターミナルの設定
 export const TERMINAL_OPTIONS = {
