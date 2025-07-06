@@ -70,7 +70,8 @@ function createInitialState(): TerminalState {
  * WebSocket接続を管理する関数
  */
 function createWebSocketManager(
-  sessionId: string,
+  sessionId: () => string,
+  setSessionId: (id: string) => void,
   term: Terminal,
   setStore: (fn: (state: TerminalState) => Partial<TerminalState>) => void,
   initialState: TerminalState,
@@ -300,6 +301,12 @@ function createWebSocketManager(
 
         if (data.type === 'ping') return;
 
+        if (data.type === 'session_id' && data.session_id) {
+          setSessionId(data.session_id);
+          term.writeln(`🔑 セッションID受信: ${data.session_id}`);
+          return;
+        }
+
         if (data.type === 'welcome') {
           term.writeln('✅ ActionCable接続が確立されました');
           return;
@@ -367,10 +374,16 @@ function createWebSocketManager(
    * @returns {boolean} コマンドの送信が成功したかどうか
    */
   const sendCommand = (command: string): boolean => {
+    const currentSessionId = sessionId();
+    if (!currentSessionId) {
+      term.writeln('\x1b[31m❌ セッションIDがまだ受信されていません\x1b[0m');
+      return false;
+    }
+
     try {
       const validatedCommand = CommandSchema.parse({
         command,
-        session_id: sessionId,
+        session_id: currentSessionId,
       });
 
       const socket = ws();
@@ -449,7 +462,7 @@ function createWebSocketManager(
 export function createTerm(container: HTMLDivElement): TerminalReturn {
   // 状態管理
   const [store, setStore] = createStore<TerminalState>(createInitialState());
-  const sessionId = crypto.randomUUID();
+  const [sessionId, setSessionId] = createSignal('');
 
   // コマンドバッファの管理
   const [commandBuffer, setCommandBuffer] = createSignal('');
@@ -490,10 +503,11 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
 
   // 初期メッセージの表示
   term.writeln(`🔌 接続先: ${WS_URL}`);
-  term.writeln(`🔑 セッションID: ${sessionId}`);
+  term.writeln(`🔑 セッションID: サーバーから受信中...`);
 
   const wsManager = createWebSocketManager(
     sessionId,
+    setSessionId,
     term,
     setStore,
     store,

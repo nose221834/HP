@@ -17,6 +17,7 @@ export const WebSocketMessageSchema = z.object({
       z.number(),
     ])
     .optional(),
+  session_id: z.string().optional(),
   identifier: z.string().optional(),
 });
 
