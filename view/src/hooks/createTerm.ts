@@ -1,3 +1,4 @@
+import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -477,6 +478,7 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
   term.loadAddon(new WebLinksAddon());
   term.loadAddon(new SearchAddon());
   term.loadAddon(new Unicode11Addon());
+  term.loadAddon(new ClipboardAddon());
 
   // WebGLアドオンの適用
   let webglAddon: WebglAddon | undefined;

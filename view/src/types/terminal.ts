@@ -57,10 +57,7 @@ export interface TerminalReturn {
 // 定数
 export const INITIAL_DIR = '/home/nonroot';
 export const MAX_HISTORY_SIZE = 100;
-export const WS_HOST =
-  typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? 'localhost'
-    : '192.168.97.1';
+export const WS_HOST = 'localhost';
 export const WS_URL = `ws://${WS_HOST}:8000/api/v1/ws/terminal`;
 
 // ターミナルの設定
