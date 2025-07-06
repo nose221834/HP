@@ -396,7 +396,7 @@ function createWebSocketManager(
             }),
             data: JSON.stringify({
               action: 'execute_command',
-              command: JSON.stringify(validatedCommand),
+              command: validatedCommand,
             }),
           })
         );
