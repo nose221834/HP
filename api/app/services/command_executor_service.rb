@@ -2,7 +2,6 @@
 # Redisを通じて実際のコマンド実行サーバー（Go）に転送し、
 # 結果を受け取ってクライアントに返すサービス
 class CommandExecutorService
-
   # Redisのチャンネル名
   # コマンド送信用と結果受信用の2つのチャンネルを使用
   COMMAND_CHANNEL = "terminal:commands"  # コマンドを送信するチャンネル
