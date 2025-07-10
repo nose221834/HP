@@ -1,3 +1,4 @@
+import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -16,7 +17,6 @@ import {
   TerminalStateSchema,
   WS_RECONNECT_CONFIG,
   WS_URL,
-  WebSocketMessageSchema,
 } from '../types/terminal';
 
 import type {
@@ -25,6 +25,21 @@ import type {
   WebSocketError,
   WebSocketMessage,
 } from '../types/terminal';
+
+// ActionCableメッセージの型定義
+interface ActionCableMessage {
+  type?: string;
+  session_id?: string;
+  message?: {
+    status?: string;
+    result?: string;
+    error?: string;
+    pwd?: string;
+    username?: string;
+    command?: string;
+    prompt?: string;
+  };
+}
 
 /**
  * ターミナルエミュレータの実装
@@ -60,6 +75,7 @@ function createInitialState(): TerminalState {
     isReadyForInput: false,
     currentDir: INITIAL_DIR,
     username: 'nonroot',
+    prompt: undefined,
     commandHistory: [],
     historyIndex: -1,
     isProcessingCommand: false,
@@ -70,7 +86,8 @@ function createInitialState(): TerminalState {
  * WebSocket接続を管理する関数
  */
 function createWebSocketManager(
-  sessionId: string,
+  sessionId: () => string,
+  setSessionId: (id: string) => void,
   term: Terminal,
   setStore: (fn: (state: TerminalState) => Partial<TerminalState>) => void,
   initialState: TerminalState,
@@ -90,10 +107,8 @@ function createWebSocketManager(
    * プロンプトを表示する関数
    *
    * 表示内容:
-   * - ユーザー名（緑色）
-   * - ホスト名
-   * - 現在のディレクトリ（青色）
-   * - プロンプト記号（$）
+   * - サーバーから送られてくるプロンプト情報を使用
+   * - プロンプトが取得できない場合はデフォルトのプロンプトを表示
    *
    * 注意:
    * - ターミナルが準備完了していない場合は表示しない
@@ -101,11 +116,19 @@ function createWebSocketManager(
    */
   const writePrompt = () => {
     if (!currentState().isReadyForInput) return;
-    const username = currentState().username || 'nonroot';
-    const hostname = 'terminal';
-    term.write(
-      `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${currentState().currentDir}\x1b[0m $ `
-    );
+
+    const prompt = currentState().prompt;
+    if (prompt) {
+      // サーバーから送られてくるプロンプトをそのまま表示
+      term.write(prompt);
+    } else {
+      // フォールバック: デフォルトのプロンプトを表示
+      const username = currentState().username || 'nonroot';
+      const hostname = 'terminal';
+      term.write(
+        `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${currentState().currentDir}\x1b[0m $ `
+      );
+    }
     setCommandBuffer(() => '');
     setCursorPosition(() => 0);
   };
@@ -124,12 +147,22 @@ function createWebSocketManager(
    */
   const clearAndWriteCommand = (command: string) => {
     if (!currentState().isReadyForInput) return;
-    const username = currentState().username || 'nonroot';
-    const hostname = 'terminal';
+
+    const prompt = currentState().prompt;
     term.write('\r');
-    term.write(
-      `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${currentState().currentDir}\x1b[0m $ `
-    );
+
+    if (prompt) {
+      // サーバーから送られてくるプロンプトをそのまま表示
+      term.write(prompt);
+    } else {
+      // フォールバック: デフォルトのプロンプトを表示
+      const username = currentState().username || 'nonroot';
+      const hostname = 'terminal';
+      term.write(
+        `\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${currentState().currentDir}\x1b[0m $ `
+      );
+    }
+
     term.write('\x1b[K');
     setCommandBuffer(() => command);
     setCursorPosition(() => command.length);
@@ -150,9 +183,9 @@ function createWebSocketManager(
    * 1. メッセージがオブジェクトの場合:
    *    - pwd: 現在のディレクトリを更新
    *    - username: ユーザー名を更新
+   *    - prompt: プロンプト情報を更新
    *    - error: エラーメッセージを表示
-   *    - result: コマンド実行結果を表示
-   *      - lsコマンドの場合は特別な表示処理を実施
+   *    - result: コマンド実行結果を表示（そのまま表示）
    * 2. メッセージが文字列の場合:
    *    - そのままターミナルに表示
    */
@@ -160,10 +193,17 @@ function createWebSocketManager(
     if (!data.message) return;
 
     if (typeof data.message === 'object' && data.message !== null) {
+      // プロンプト情報の更新
+      if ('prompt' in data.message && typeof data.message.prompt === 'string') {
+        updateState({ prompt: data.message.prompt });
+      }
+
+      // ディレクトリ情報の更新
       if ('pwd' in data.message && typeof data.message.pwd === 'string') {
         updateState({ currentDir: data.message.pwd });
       }
 
+      // ユーザー名の更新
       if (
         'username' in data.message &&
         typeof data.message.username === 'string'
@@ -171,45 +211,18 @@ function createWebSocketManager(
         updateState({ username: data.message.username });
       }
 
+      // エラーメッセージの処理
       if ('error' in data.message && typeof data.message.error === 'string') {
         term.write(`\x1b[31m❌ エラー: ${data.message.error}\x1b[0m\r\n`);
         if (data.message.result?.trim()) {
           term.write(data.message.result + '\r\n');
         }
       } else if (data.message.result?.trim()) {
-        // lsコマンドの出力を特別に処理
-        const command = data.message.command ?? '';
-        if (typeof command === 'string' && command.trim().startsWith('ls')) {
-          const items = data.message.result.split('\n').filter(Boolean);
-
-          // ls -l または ls -la の場合、詳細表示モードで処理
-          if (command.includes('-l')) {
-            // 各行を個別に表示
-            for (const line of items) {
-              term.write(line + '\r\n');
-            }
-          } else {
-            // 通常のls表示（ターミナルの幅に合わせて表示を調整）
-            const width = term.cols;
-            const maxItemLength =
-              Math.max(...items.map((item) => item.length)) + 1;
-            const minItemWidth = 12;
-            const effectiveItemWidth = Math.max(maxItemLength, minItemWidth);
-            const itemsPerLine = Math.floor(width / effectiveItemWidth);
-
-            for (let i = 0; i < items.length; i += itemsPerLine) {
-              const line = items
-                .slice(i, i + itemsPerLine)
-                .map((item) => item.padEnd(effectiveItemWidth))
-                .join('');
-              term.write(line + '\r\n');
-            }
-          }
-        } else {
-          term.write(data.message.result + '\r\n');
-        }
+        // コマンド実行結果をそのまま表示（特別処理なし）
+        term.write(data.message.result + '\r\n');
       }
     } else {
+      // 文字列メッセージをそのまま表示
       term.write(String(data.message) + '\r\n');
     }
 
@@ -282,6 +295,7 @@ function createWebSocketManager(
       });
       setReconnectAttempts(0);
 
+      // ActionCableの接続確立メッセージを送信
       socket.send(
         JSON.stringify({
           command: 'subscribe',
@@ -294,18 +308,24 @@ function createWebSocketManager(
 
     socket.onmessage = (event: MessageEvent) => {
       try {
-        const data = WebSocketMessageSchema.parse(
-          JSON.parse(event.data as string)
-        );
+        const rawData = JSON.parse(event.data as string) as ActionCableMessage;
+        console.log('Received WebSocket message:', rawData);
 
-        if (data.type === 'ping') return;
+        // ActionCableのメッセージ形式に対応
+        if (rawData.type === 'ping') return;
 
-        if (data.type === 'welcome') {
+        if (rawData.type === 'session_id' && rawData.session_id) {
+          setSessionId(rawData.session_id);
+          term.writeln(`🔑 セッションID受信: ${rawData.session_id}`);
+          return;
+        }
+
+        if (rawData.type === 'welcome') {
           term.writeln('✅ ActionCable接続が確立されました');
           return;
         }
 
-        if (data.type === 'confirm_subscription') {
+        if (rawData.type === 'confirm_subscription') {
           term.writeln('✅ チャンネルにサブスクライブしました');
           updateState({
             isSubscribed: true,
@@ -315,11 +335,13 @@ function createWebSocketManager(
           return;
         }
 
-        if (data.message) {
-          handleMessage(data);
+        // コマンド実行結果の処理
+        if (rawData.message) {
+          handleMessage({ message: rawData.message });
         }
       } catch (error) {
         console.error('WebSocket message processing error:', error);
+        console.error('Raw message:', event.data);
         handleError();
       }
     };
@@ -367,10 +389,16 @@ function createWebSocketManager(
    * @returns {boolean} コマンドの送信が成功したかどうか
    */
   const sendCommand = (command: string): boolean => {
+    const currentSessionId = sessionId();
+    if (!currentSessionId) {
+      term.writeln('\x1b[31m❌ セッションIDがまだ受信されていません\x1b[0m');
+      return false;
+    }
+
     try {
       const validatedCommand = CommandSchema.parse({
         command,
-        session_id: sessionId,
+        session_id: currentSessionId,
       });
 
       const socket = ws();
@@ -383,7 +411,7 @@ function createWebSocketManager(
             }),
             data: JSON.stringify({
               action: 'execute_command',
-              command: JSON.stringify(validatedCommand),
+              command: validatedCommand,
             }),
           })
         );
@@ -449,7 +477,7 @@ function createWebSocketManager(
 export function createTerm(container: HTMLDivElement): TerminalReturn {
   // 状態管理
   const [store, setStore] = createStore<TerminalState>(createInitialState());
-  const sessionId = crypto.randomUUID();
+  const [sessionId, setSessionId] = createSignal('');
 
   // コマンドバッファの管理
   const [commandBuffer, setCommandBuffer] = createSignal('');
@@ -464,6 +492,7 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
   term.loadAddon(new WebLinksAddon());
   term.loadAddon(new SearchAddon());
   term.loadAddon(new Unicode11Addon());
+  term.loadAddon(new ClipboardAddon());
 
   // WebGLアドオンの適用
   let webglAddon: WebglAddon | undefined;
@@ -490,10 +519,11 @@ export function createTerm(container: HTMLDivElement): TerminalReturn {
 
   // 初期メッセージの表示
   term.writeln(`🔌 接続先: ${WS_URL}`);
-  term.writeln(`🔑 セッションID: ${sessionId}`);
+  term.writeln(`🔑 セッションID: サーバーから受信中...`);
 
   const wsManager = createWebSocketManager(
     sessionId,
+    setSessionId,
     term,
     setStore,
     store,

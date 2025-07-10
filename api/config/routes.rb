@@ -10,8 +10,10 @@ Rails.application.routes.draw do
 
   namespace "api" do
     namespace "v1" do
-      # websocketを使用するためのルーティング
-      mount ActionCable.server => "/cable"
+      namespace "ws" do
+        # websocketを使用するためのルーティング
+        mount ActionCable.server => "/terminal"
+      end
     end
   end
 end

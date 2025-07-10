@@ -7,16 +7,19 @@ export const WebSocketMessageSchema = z.object({
   message: z
     .union([
       z.object({
+        status: z.string().optional(),
         result: z.string().optional(),
         error: z.string().optional(),
         pwd: z.string().optional(),
         username: z.string().optional(),
         command: z.string().optional(),
+        prompt: z.string().optional(),
       }),
       z.string(),
       z.number(),
     ])
     .optional(),
+  session_id: z.string().optional(),
   identifier: z.string().optional(),
 });
 
@@ -38,6 +41,7 @@ export const TerminalStateSchema = z.object({
   isReadyForInput: z.boolean(),
   currentDir: z.string(),
   username: z.string(),
+  prompt: z.string().optional(),
   commandHistory: z.array(z.string()),
   historyIndex: z.number(),
   isProcessingCommand: z.boolean(),
@@ -56,11 +60,8 @@ export interface TerminalReturn {
 // 定数
 export const INITIAL_DIR = '/home/nonroot';
 export const MAX_HISTORY_SIZE = 100;
-export const WS_HOST =
-  typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? 'localhost'
-    : '192.168.97.1';
-export const WS_URL = `ws://${WS_HOST}:8000/api/v1/cable`;
+export const WS_HOST = 'localhost';
+export const WS_URL = `ws://${WS_HOST}:8000/api/v1/ws/terminal`;
 
 // ターミナルの設定
 export const TERMINAL_OPTIONS = {

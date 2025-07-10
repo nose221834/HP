@@ -2,10 +2,6 @@
 # Redisを通じて実際のコマンド実行サーバー（Go）に転送し、
 # 結果を受け取ってクライアントに返すサービス
 class CommandExecutorService
-  # 実行を許可するコマンドのリスト
-  # セキュリティのため、実行可能なコマンドを制限
-  ALLOWED_COMMANDS = %w[ls pwd whoami date cd].freeze
-
   # Redisのチャンネル名
   # コマンド送信用と結果受信用の2つのチャンネルを使用
   COMMAND_CHANNEL = "terminal:commands"  # コマンドを送信するチャンネル
@@ -13,8 +9,8 @@ class CommandExecutorService
   TIMEOUT_SECONDS = 10  # コマンド実行のタイムアウト時間（秒）
 
   # クラスメソッドとして実行を提供
-  def self.execute(command)
-    new.execute(command)
+  def self.execute(command_data)
+    new.execute(command_data)
   end
 
   # コマンド実行のメインロジック
@@ -22,35 +18,27 @@ class CommandExecutorService
   # 2. コマンドを送信
   # 3. 結果を待機
   # 4. 結果を返却
-  def execute(command)
-    Rails.logger.info "コマンド実行開始: #{command}"
+  def execute(command_data)
+    Rails.logger.info "コマンド実行開始: #{command_data}"
 
-    # コマンドデータからセッションIDを抽出
-    command_data = begin
-      JSON.parse(command)
-    rescue JSON::ParserError
-      { command: command, session_id: nil }
-    end
-
+    # Redisに接続
     redis = Redis.new(
       url: ENV.fetch("REDIS_URL", "redis://:password@redis:6379/0"),
       timeout: 5,
       reconnect_attempts: 3
     )
 
+    # Redisに接続テスト
     begin
       redis.ping
       Rails.logger.info "Redis接続テスト成功"
     rescue => e
       Rails.logger.error "Redis接続テスト失敗: #{e.message}"
-      return { status: "error", command: command, error: "Redis接続エラー: #{e.message}" }
+      return { status: "error", command: command_data, error: "Redis接続エラー: #{e.message}" }
     end
 
-    # コマンドをJSON形式で送信（クライアントのセッションIDを維持）
-    command_json = {
-      command: command_data["command"] || command,
-      session_id: command_data["session_id"]
-    }.to_json
+    # コマンドをJSON形式に変換
+    command_json = command_data.to_json
 
     # 結果を待機するためのキューを作成
     result_queue = Queue.new
@@ -78,7 +66,7 @@ class CommandExecutorService
             rescue JSON::ParserError => e
               Rails.logger.error "JSONパースエラー: #{e.message}, メッセージ: #{message}"
               if subscription_active
-                result_queue.push({ status: "error", command: command, error: "結果のパースに失敗: #{e.message}" })
+                result_queue.push({ status: "error", command: command_data, error: "結果のパースに失敗: #{e.message}" })
                 subscription_active = false
                 redis.unsubscribe
               end
@@ -98,7 +86,7 @@ class CommandExecutorService
         end
       rescue => e
         Rails.logger.error "Redis購読エラー: #{e.message}"
-        result_queue.push({ status: "error", command: command, error: "Redis購読エラー: #{e.message}" })
+        result_queue.push({ status: "error", command: command_data, error: "Redis購読エラー: #{e.message}" })
       ensure
         subscription_active = false
       end
@@ -119,32 +107,10 @@ class CommandExecutorService
 
     if result.nil?
       Rails.logger.error "コマンド実行タイムアウト（#{elapsed_time}秒経過）"
-      { status: "error", command: command, error: "コマンド実行タイムアウト（#{elapsed_time}秒経過）" }
+      { status: "error", command: command_data, error: "コマンド実行タイムアウト（#{elapsed_time}秒経過）" }
     else
       Rails.logger.info "コマンド実行完了: #{result.inspect}"
       result
     end
-  end
-
-  private
-
-  # コマンドが許可リストに含まれているかチェック
-  def self.allowed_command?(command)
-    base_command = command.split(" ").first
-    ALLOWED_COMMANDS.include?(base_command)
-  end
-
-  # コマンドインジェクション対策
-  # 危険な文字を除去
-  def self.sanitize_command(command)
-    command.gsub(/[;&|`$]/, "")
-  end
-
-  # エラーレスポンスの生成
-  def self.error_response(message)
-    {
-      status: "error",
-      error: message
-    }
   end
 end

@@ -5,6 +5,7 @@ enable [  # testコマンドとして必要
 enable alias  # エイリアス設定に必要
 enable cd  # ディレクトリ移動に必要
 enable -n echo  # 出力に必要
+enable -n false  # シェル終了に必要
 enable -n exit  # シェル終了に必要
 enable export  # 環境変数設定に必要
 enable pwd  # 現在のディレクトリ表示に必要
@@ -26,7 +27,6 @@ enable -n dirs
 enable -n disown
 enable -n eval
 enable -n exec
-enable -n false
 enable -n fc
 enable -n fg
 enable -n getopts
