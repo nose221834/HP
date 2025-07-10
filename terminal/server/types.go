@@ -46,4 +46,5 @@ type CommandResult struct {
 	Pwd       string `json:"pwd,omitempty"`       	// 現在の作業ディレクトリ
 	Username  string `json:"username,omitempty"`  	// 現在のユーザー名
 	SessionID string `json:"session_id,omitempty"` 	// セッション識別子（クライアント識別用）
+	Prompt    string `json:"prompt,omitempty"`    	// 現在のプロンプト（ターミナル状態）
 }

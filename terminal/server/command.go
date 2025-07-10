@@ -3,9 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -186,186 +183,61 @@ func buildCommandString(chain *CommandChain) string {
 
 // executeSingleCommand は、単一のコマンドを実行する（既存のexecuteCommandの機能を分割）
 func executeSingleCommand(cmd string, session *Session, sessionID string, isChainPart bool) (CommandResult, error) {
-	// コマンドを空白で分割して解析
-	parts := strings.Fields(cmd)
-
-	// cdコマンドの処理（コマンドチェーンの一部でない場合のみ特別処理）
-	if len(parts) > 0 && parts[0] == "cd" && !isChainPart {
-		return executeCD(session, parts, sessionID, cmd)
-	}
-
-	// 通常のコマンド実行
-	return executeNormalCommand(session, sessionID, cmd)
-}
-
-// cdコマンドの特殊な処理を行う関数
-// 引数としてセッションとコマンドの分割結果を受け取る
-func executeCD(session *Session, parts []string,sessionID string,cmd string) (CommandResult, error) {
-	// 引数が1つの場合はデフォルトディレクトリに移動(cdのみ)
-	if len(parts) == 1 {
-		// cdのみの場合はデフォルトディレクトリに移動
-		session.PreviousDir = session.CurrentDir // 現在のディレクトリを保存
-		session.CurrentDir = "/home/nonroot"
-		return CommandResult{
-			Status:    "success",
-			Command:   cmd,
-			Result:    "",
-			Pwd:       session.CurrentDir,
-			Username:  session.Username,  // ユーザー名を結果に含める
-			SessionID: sessionID,
-		}, nil
-	}
-
-	// cd - の特別処理
-	if parts[1] == "-" {
-		// 直前のディレクトリが空の場合はエラー
-		if session.PreviousDir == "" {
-			return CommandResult{
-				Status:    "error",
-				Command:   cmd,
-				Error:     "直前のディレクトリがありません",
-				Pwd:       session.CurrentDir,
-				Username:  session.Username,  // ユーザー名を結果に含める
-				SessionID: sessionID,
-			}, nil
-		}
-		// 現在のディレクトリと直前のディレクトリを入れ替え
-		session.PreviousDir, session.CurrentDir = session.CurrentDir, session.PreviousDir
-		return CommandResult{
-			Status:    "success",
-			Command:   cmd,
-			Result:    "",
-			Pwd:       session.CurrentDir,
-			Username:  session.Username,
-			SessionID: sessionID,
-		}, nil
-	}
-
-	// cd ~ の特別処理
-	if strings.HasPrefix(parts[1], "~") {
-		// ユーザーのホームディレクトリに移動
-		homeDir := os.Getenv("HOME")
-		if homeDir == "" {
-			return CommandResult{
-				Status:    "error",
-				Command:   cmd,
-				Error:     "ホームディレクトリが取得できません",
-				Pwd:       session.CurrentDir,
-				Username:  session.Username,  // ユーザー名を結果に含める
-				SessionID: sessionID,
-			}, nil
-		}
-		// ~をホームディレクトリに置き換え
-		parts[1] = strings.Replace(parts[1], "~", homeDir, 1)
-	}
-
-	// 通常のcdコマンド処理
-	// 相対パスの場合は現在のディレクトリからの相対パスに変換
-	if !strings.HasPrefix(parts[1], "/") {
-		parts[1] = filepath.Join(session.CurrentDir, parts[1])
-	}
-	// パスの正規化（..や.の解決）
-	newDir := filepath.Clean(parts[1])
-
-	// ディレクトリの存在確認
-	fileInfo, err := os.Stat(newDir)
+	// 継続的なシェルセッションでコマンドを実行
+	output, err := session.ExecuteCommandInSession(cmd)
 	if err != nil {
 		return CommandResult{
 			Status:    "error",
 			Command:   cmd,
-			Error:     fmt.Sprintf("ディレクトリが存在しません: %s", newDir),
-			Pwd:       session.CurrentDir,
-			Username:  session.Username,  // ユーザー名を結果に含める
+			Error:     fmt.Sprintf("コマンド実行エラー: %v", err),
 			SessionID: sessionID,
 		}, nil
 	}
 
-	// 入手した情報がディレクトリかどうかを確認
-	if !fileInfo.IsDir() {
-		return CommandResult{
-			Status:    "error",
-			Command:   cmd,
-			Error:     fmt.Sprintf("ディレクトリが存在しません: %s", newDir),
-			Pwd:       session.CurrentDir,
-			Username:  session.Username,  // ユーザー名を結果に含める
-			SessionID: sessionID,
-		}, nil
-	}
+	// 現在のディレクトリとユーザー名を取得（プロンプトから解析）
+	pwd, username, prompt := parsePromptInfo(output)
 
-	// ディレクトリの変更
-	session.PreviousDir = session.CurrentDir // 現在のディレクトリを保存
-	session.CurrentDir = newDir
 	return CommandResult{
 		Status:    "success",
 		Command:   cmd,
-		Result:    "",
-		Pwd:       session.CurrentDir,
-		Username:  session.Username,  // ユーザー名を結果に含める
+		Result:    output,
+		Pwd:       pwd,
+		Username:  username,
+		Prompt:    prompt,
 		SessionID: sessionID,
 	}, nil
 }
 
-// 通常のコマンドを実行する関数
-// 引数としてセッションとコマンドの分割結果を受け取る
-func executeNormalCommand(session *Session,sessionID string,cmd string) (CommandResult, error) {
-	cmdObj := exec.Command("bash","-l", "-c", fmt.Sprintf("cd %s && %s", session.CurrentDir, cmd))
-	output, err := cmdObj.CombinedOutput()
-	outputStr := strings.TrimSpace(string(output))
-
-	// 終了コードを取得
-	var exitCode int
-	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			exitCode = exitError.ExitCode()
-		} else {
-			exitCode = -1
+// parsePromptInfo は出力からプロンプト情報を解析する
+func parsePromptInfo(output string) (pwd, username, prompt string) {
+	lines := strings.Split(output, "\n")
+	
+	// 最後の行からプロンプト情報を取得
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := lines[i]
+		if strings.Contains(line, "$ ") || strings.Contains(line, "# ") {
+			prompt = line
+			// プロンプトの形式: username@hostname:path$
+			parts := strings.Split(line, "@")
+			if len(parts) >= 2 {
+				username = parts[0]
+				// パス部分を抽出
+				pathParts := strings.Split(parts[1], ":")
+				if len(pathParts) >= 2 {
+					pwd = pathParts[1]
+					// $記号を除去
+					pwd = strings.TrimSuffix(pwd, "$")
+					pwd = strings.TrimSuffix(pwd, "#")
+				}
+			}
+			break
 		}
-	} else {
-		exitCode = 0
 	}
-
-	// 実際のシェルの動作に合わせる：
-	// - 終了コードが0の場合は成功
-	// - 終了コードが0以外でも出力がある場合は成功（エラーメッセージなど）
-	// - 終了コードが0以外で出力がない場合は失敗（falseコマンドなど）
-	if exitCode == 0 {
-		// 成功時の結果を返却
-		result := CommandResult{
-			Status:    "success",
-			Command:   cmd,
-			Result:    outputStr,
-			Pwd:       session.CurrentDir,
-			Username:  session.Username,
-			SessionID: sessionID,
-		}
-		log.Printf("コマンド実行成功: %+v", result)
-		return result, nil
-	} else if outputStr != "" {
-		// 終了コードが0以外でも出力がある場合は成功として扱う
-		result := CommandResult{
-			Status:    "success",
-			Command:   cmd,
-			Result:    outputStr,
-			Pwd:       session.CurrentDir,
-			Username:  session.Username,
-			SessionID: sessionID,
-		}
-		log.Printf("コマンド実行成功（終了コード%d）: %+v", exitCode, result)
-		return result, nil
-	} else {
-		// 終了コードが0以外で出力がない場合は失敗
-		log.Printf("コマンド実行失敗（終了コード%d）: %s", exitCode, cmd)
-		return CommandResult{
-			Status:    "error",
-			Command:   cmd,
-			Error:     fmt.Sprintf("コマンド実行失敗（終了コード: %d）", exitCode),
-			Result:    outputStr,
-			Pwd:       session.CurrentDir,
-			Username:  session.Username,
-			SessionID: sessionID,
-		}, nil
-	}
+	
+	return pwd, username, prompt
 }
+
+
 
 
 // executeCommand は、指定されたコマンドを実行し、結果を返す

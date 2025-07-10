@@ -7,11 +7,13 @@ export const WebSocketMessageSchema = z.object({
   message: z
     .union([
       z.object({
+        status: z.string().optional(),
         result: z.string().optional(),
         error: z.string().optional(),
         pwd: z.string().optional(),
         username: z.string().optional(),
         command: z.string().optional(),
+        prompt: z.string().optional(),
       }),
       z.string(),
       z.number(),
@@ -39,6 +41,7 @@ export const TerminalStateSchema = z.object({
   isReadyForInput: z.boolean(),
   currentDir: z.string(),
   username: z.string(),
+  prompt: z.string().optional(),
   commandHistory: z.array(z.string()),
   historyIndex: z.number(),
   isProcessingCommand: z.boolean(),
