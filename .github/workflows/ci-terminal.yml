@@ -2,6 +2,7 @@ name: CI-terminal
 
 on:
   pull_request:
+    branches: ['main', 'develop']
     paths:
         - 'terminal/**'
         - '.github/workflows/ci-terminal.yml'
@@ -22,7 +23,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3 # 永続ビルダー設定
         with:
-          install: true
           buildkitd-flags: --debug
 
       # dockerをbuild
@@ -44,7 +44,7 @@ jobs:
 
       # Trivyでイメージのセキュリティチェック
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.31.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: 'hp-terminal:${{ github.sha }}'
           format: 'table'

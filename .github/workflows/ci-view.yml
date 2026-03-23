@@ -8,7 +8,7 @@ on:
   # Pull Request時
   pull_request:
     # 対象のブランチを指定
-    branches: ['main']
+    branches: ['main', 'develop']
     # 対象のパスを指定
     paths:
       # view以下のファイルが変更された場合にのみ実行
