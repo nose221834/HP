@@ -15,36 +15,6 @@ services:
       NODE_ENV: development
       API_URL: http://localhost:8000
 
-  api:
-    container_name: api
-    build:
-      context: ./api
-      dockerfile: Dockerfile
-    ports:
-      - "8000:3000"
-    volumes:
-      - ./api:/rails
-    environment:
-      RAILS_ENV: development
-      DATABASE_URL: postgres://user:password@db:5432/mydb
-      REDIS_URL: "redis://:password@redis:6379/0"
-    depends_on:
-      - db
-      - redis
-
-  redis:
-    container_name: redis
-    image: redis:latest
-    ports:
-      - "6379:6379"
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      PASSWORD: password
-    volumes:
-      - ./redis:/data
-    command: ["redis-server", "--requirepass", "password"]
-
   db:
     container_name: db
     image: postgres:latest
@@ -67,15 +37,10 @@ services:
 
   terminal:
     container_name: terminal
+    ports:
+      - "8080:8080"
     build:
       context: ./terminal
       dockerfile: Dockerfile
-      args:
-        - REDIS_HOST=${REDIS_HOST}
-        - REDIS_PORT=${REDIS_PORT}
-        - REDIS_PASSWORD=${REDIS_PASSWORD}
-        - REDIS_DB=${REDIS_DB}
     read_only: true  # ここでファイルシステムを読み取り専用に設定
-    depends_on:
-      - redis
 
