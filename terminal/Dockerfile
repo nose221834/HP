@@ -1,60 +1,29 @@
-# 1) 共通ビルダー：BusyBox(static) を準備
-FROM debian AS base-builder
-
-# busybox-static をインストール
-RUN apt-get update && apt-get install -y \
-    build-essential wget \
-    libncurses5-dev libreadline-dev libssl-dev texinfo \
-    bison flex gettext busybox-static \
-    && rm -rf /var/lib/apt/lists/*
-
-# Bash を静的リンクでビルド
-RUN wget http://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz \
-    && tar xzf bash-5.3.tar.gz \
-    && cd bash-5.3 \
-    && ./configure --without-bash-malloc --enable-static \
-    CFLAGS='-static' LDFLAGS='-static' \
-    && make \
-    && strip bash
-
-# 独自ディレクトリに busybox 本体と必要なリンクを作成
-RUN mkdir /bb \
-    && cp /bin/busybox /bb/ \
-    && cd /bb \
-    && ln -s busybox ls \
-    && ln -s busybox cat \
-    && ln -s busybox clear \
-    && ln -s busybox whoami
-
-# 2) Go バイナリビルダー
 FROM golang:1.26.1 AS go-builder
-# 作業ディレクトリを server に設定
 WORKDIR /app/server
 
 # Goモジュールファイルをコピーして依存関係を取得
 COPY server/go.mod server/go.sum ./
 RUN go mod download
 
-# ソースコード全体を server ディレクトリにコピー
 COPY server/. .
 
 # terminal バイナリのビルド
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -o /app/terminal .
 
-# help バイナリのビルド（helpディレクトリがある前提）
+# help バイナリのビルド
 WORKDIR /app/help
 COPY help/. .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -o /cli/bin/help main.go
 
-# 3) パーミッション設定用の一時的なステージ
-FROM debian:bullseye-slim AS permission-setter
+FROM debian:13 AS base-bin
+
+RUN apt-get update && apt-get install -y --no-install-recommends bash-static busybox-static
 
 # chownに必要なファイルをetcに配置
 COPY ./etc /etc
 
-# 必要なファイルをコピー
 COPY ./etc /tmp
 COPY ./nonroot/ /home/nonroot/
 
@@ -78,31 +47,27 @@ RUN mkdir -p /tmp/profile.d && \
     chmod -R g+x,o+x /tmp/profile.d
 
 # 4) 最終イメージ
-FROM gcr.io/distroless/static-debian11:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
 USER nonroot
 
-# bashのバイナリを/binに配置
-COPY --from=base-builder /bash-5.3/bash /bin/bash
+COPY --from=base-bin /bin/bash-static /bin/bash
+COPY --from=base-bin /bin/bash-static /bin/sh
 
-# RUNコマンドを実行するために、bashを/bin/shにリンク
-COPY --from=base-builder /bash-5.3/bash   /bin/sh
-
-# BusyBox バイナリとリンクのみを /bin に配置
-COPY --from=base-builder /bb/ls       /bin/ls
-COPY --from=base-builder /bb/cat      /bin/cat
-COPY --from=base-builder /bb/clear    /bin/clear
-COPY --from=base-builder /bb/whoami   /bin/whoami
+# BusyBoxはファイル名で振る舞いを変える
+COPY --from=base-bin /bin/busybox /bin/ls
+COPY --from=base-bin /bin/busybox /bin/cat
+COPY --from=base-bin /bin/busybox /bin/clear
 
 # Goのバイナリを/binに配置
 COPY --from=go-builder /cli/bin/help /bin/help
 COPY --from=go-builder /app/terminal /usr/local/bin/terminal
 
 # etcに配置するファイルをコピー
-COPY --from=permission-setter /tmp /etc
+COPY --from=base-bin /tmp /etc
 
 # ユーザ以下のファイルを追加
-COPY --from=permission-setter /home/nonroot/ /home/nonroot/
+COPY --from=base-bin /home/nonroot/ /home/nonroot/
 
 # アプリケーションの起動
 CMD ["terminal"]
