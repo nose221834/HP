@@ -37,10 +37,10 @@ services:
 
   terminal:
     container_name: terminal
+    ports:
+      - "8080:8080"
     build:
       context: ./terminal
       dockerfile: Dockerfile
     read_only: true  # ここでファイルシステムを読み取り専用に設定
-    depends_on:
-      - redis
 

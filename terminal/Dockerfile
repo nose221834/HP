@@ -27,7 +27,7 @@ RUN mkdir /bb \
     && ln -s busybox whoami
 
 # 2) Go バイナリビルダー
-FROM golang:1.23.1 AS go-builder
+FROM golang:1.26.1 AS go-builder
 # 作業ディレクトリを server に設定
 WORKDIR /app/server
 
@@ -38,23 +38,9 @@ RUN go mod download
 # ソースコード全体を server ディレクトリにコピー
 COPY server/. .
 
-# TODO:REDIS周りの引数を削除
-# ビルド引数の定義とデフォルト値
-ARG REDIS_HOST=redis
-ARG REDIS_PORT=6379
-ARG REDIS_PASSWORD=password
-ARG REDIS_DB=0
-
-# 実行時環境変数（任意で使用）
-ENV REDIS_HOST=${REDIS_HOST} \
-    REDIS_PORT=${REDIS_PORT} \
-    REDIS_PASSWORD=${REDIS_PASSWORD} \
-    REDIS_DB=${REDIS_DB}
-
 # terminal バイナリのビルド
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags "\
-    -o /app/terminal .
+    go build -o /app/terminal .
 
 # help バイナリのビルド（helpディレクトリがある前提）
 WORKDIR /app/help
