@@ -44,7 +44,7 @@ func wsHandler(logger *slog.Logger) http.HandlerFunc {
 
 func runTerminal(ctx context.Context,conn *websocket.Conn,logger *slog.Logger) error {
 
-	cmd := exec.CommandContext(ctx,"/bin/bash")
+	cmd := exec.CommandContext(ctx,"/bin/bash","-l")
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
 		"HOME=/home/nonroot",
