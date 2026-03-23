@@ -38,6 +38,7 @@ RUN go mod download
 # ソースコード全体を server ディレクトリにコピー
 COPY server/. .
 
+# TODO:REDIS周りの引数を削除
 # ビルド引数の定義とデフォルト値
 ARG REDIS_HOST=redis
 ARG REDIS_PORT=6379
@@ -53,10 +54,6 @@ ENV REDIS_HOST=${REDIS_HOST} \
 # terminal バイナリのビルド
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags "\
-    -X main.redisHost=$REDIS_HOST \
-    -X main.redisPort=$REDIS_PORT \
-    -X main.redisPass=$REDIS_PASSWORD \
-    -X main.redisDB=$REDIS_DB" \
     -o /app/terminal .
 
 # help バイナリのビルド（helpディレクトリがある前提）
