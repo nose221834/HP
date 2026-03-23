@@ -9,9 +9,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Bash を静的リンクでビルド
-RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz \
-    && tar xzf bash-5.2.tar.gz \
-    && cd bash-5.2 \
+RUN wget http://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz \
+    && tar xzf bash-5.3.tar.gz \
+    && cd bash-5.3 \
     && ./configure --without-bash-malloc --enable-static \
     CFLAGS='-static' LDFLAGS='-static' \
     && make \
@@ -83,10 +83,10 @@ FROM gcr.io/distroless/static-debian11:nonroot
 USER nonroot
 
 # bashのバイナリを/binに配置
-COPY --from=base-builder /bash-5.2/bash /bin/bash
+COPY --from=base-builder /bash-5.3/bash /bin/bash
 
 # RUNコマンドを実行するために、bashを/bin/shにリンク
-COPY --from=base-builder /bash-5.2/bash   /bin/sh
+COPY --from=base-builder /bash-5.3/bash   /bin/sh
 
 # BusyBox バイナリとリンクのみを /bin に配置
 COPY --from=base-builder /bb/ls       /bin/ls
