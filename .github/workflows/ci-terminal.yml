@@ -21,7 +21,7 @@ jobs:
 
       # Docker Buildxのセットアップ
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3 # 永続ビルダー設定
+        uses: docker/setup-buildx-action@v4 # 永続ビルダー設定
         with:
           buildkitd-flags: --debug
 
