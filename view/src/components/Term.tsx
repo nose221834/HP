@@ -8,7 +8,7 @@ import { onCleanup, onMount } from 'solid-js';
 import type { ResizeMessage } from '../types/terminal';
 import '@xterm/xterm/css/xterm.css';
 
-const WS_URL = 'ws://localhost:8080/ws';
+const WS_URL = 'ws://localhost:9090/ws';
 
 export function Term() {
   let containerRef!: HTMLDivElement;
